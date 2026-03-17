@@ -1,10 +1,13 @@
 import 'package:avislap/views/auth/reset_password_successful.dart';
-import 'package:avislap/views/auth/reset_successful.dart';
 import 'package:avislap/widgets/parallax_hero_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../services/api_exception.dart';
+import '../../services/app_api_service.dart';
+import '../../services/session_service.dart';
 
 class _C {
   static const Color blue = Color(0xFF3D5AFE);
@@ -24,14 +27,94 @@ class Resetpassword extends StatefulWidget {
 class _ResetpasswordState extends State<Resetpassword > {
   final _newPasswordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
+  final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
     _newPasswordCtrl.dispose();
     _confirmPasswordCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitReset() async {
+    final newPassword = _newPasswordCtrl.text.trim();
+    final confirmPassword = _confirmPasswordCtrl.text.trim();
+    final recoveryToken = _session.passwordRecoveryToken?.trim() ?? '';
+
+    if (newPassword.isEmpty || confirmPassword.isEmpty) {
+      Get.snackbar(
+        'Incomplete',
+        'Please enter and confirm the new password.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      Get.snackbar(
+        'Password Mismatch',
+        'The passwords you entered do not match.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    if (recoveryToken.isEmpty) {
+      Get.snackbar(
+        'Recovery Expired',
+        'Please restart the password recovery process.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    if (_isSubmitting) {
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      await _api.confirmForgotPassword(
+        token: recoveryToken,
+        newPassword: newPassword,
+      );
+      _session.clearPasswordRecovery();
+      if (!mounted) {
+        return;
+      }
+      Get.to(() => const ResetPasswordSuccessScreen());
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Reset Failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Reset Failed',
+        'Unable to reset the password right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -191,11 +274,7 @@ class _ResetpasswordState extends State<Resetpassword > {
   // ── Submit Button ─────────────────────────────────────────
   Widget _buildSubmitButton() {
     return GestureDetector(
-      onTap: () {
-        // submit logic
-        // Get.back();
-        Get.to(()=> ResetPasswordSuccessScreen());
-      },
+      onTap: _submitReset,
       child: Container(
         height: 54.h,
         width: double.infinity,
@@ -205,7 +284,7 @@ class _ResetpasswordState extends State<Resetpassword > {
         ),
         alignment: Alignment.center,
         child: Text(
-          'SUBMIT',
+          _isSubmitting ? 'SUBMITTING...' : 'SUBMIT',
           style: GoogleFonts.dmSans(
             fontSize: 16.sp,
             fontWeight: FontWeight.w700,

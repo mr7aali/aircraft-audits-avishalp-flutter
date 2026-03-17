@@ -15,18 +15,18 @@ class NewSearchController extends GetxController {
   final nameCtrl     = TextEditingController();
   final fromDateCtrl = TextEditingController();
   final toDateCtrl   = TextEditingController();
-  final selectedFilter = Rxn<String>(); // 'pass' | 'fail' | null
+  final selectedFilters = <String>{}.obs; // values: 'pass' | 'fail'
 
   void apply() => Get.back(result: {
     'name': nameCtrl.text,
     'fromDate': fromDateCtrl.text,
     'toDate': toDateCtrl.text,
-    'filter': selectedFilter.value,
+    'filter': selectedFilters.toSet(),
   });
 
   void cancel() {
     nameCtrl.clear(); fromDateCtrl.clear(); toDateCtrl.clear();
-    selectedFilter.value = null;
+    selectedFilters.clear();
     Get.back();
   }
 
@@ -104,11 +104,15 @@ class NewSearchSheet extends StatelessWidget {
                   _sectionLabel('Pass or Fail'),
                   SizedBox(height: 10.h),
                   Obx(() => Row(children: [
-                    Expanded(child: _chip('Pass', Icons.check_rounded, ctrl.selectedFilter.value == 'pass',
-                            () => ctrl.selectedFilter.value = ctrl.selectedFilter.value == 'pass' ? null : 'pass')),
+                    Expanded(child: _chip('Pass', Icons.check_rounded, ctrl.selectedFilters.contains('pass'),
+                            () => ctrl.selectedFilters.contains('pass')
+                                ? ctrl.selectedFilters.remove('pass')
+                                : ctrl.selectedFilters.add('pass'))),
                     SizedBox(width: 12.w),
-                    Expanded(child: _chip('Fail', Icons.close_rounded, ctrl.selectedFilter.value == 'fail',
-                            () => ctrl.selectedFilter.value = ctrl.selectedFilter.value == 'fail' ? null : 'fail')),
+                    Expanded(child: _chip('Fail', Icons.close_rounded, ctrl.selectedFilters.contains('fail'),
+                            () => ctrl.selectedFilters.contains('fail')
+                                ? ctrl.selectedFilters.remove('fail')
+                                : ctrl.selectedFilters.add('fail'))),
                   ])),
                 ],
               ),

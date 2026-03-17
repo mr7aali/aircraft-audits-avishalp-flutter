@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+import '../../../services/api_exception.dart';
+import '../../../services/app_api_service.dart';
 
 // =====================
 // COLORS
@@ -85,9 +89,11 @@ class TrainingItem {
 // CONTROLLER
 // =====================
 class CabinSecurityController extends GetxController {
+  final AppApiService _api = Get.find<AppApiService>();
   final RxList<TrainingItem> _allTrainings = <TrainingItem>[].obs;
   final RxList<TrainingItem> filteredTrainings = <TrainingItem>[].obs;
   final RxInt expandedAreaIndex = (-1).obs;
+  final RxBool isLoading = true.obs;
 
   void toggleArea(int index) {
     if (expandedAreaIndex.value == index) {
@@ -112,198 +118,161 @@ class CabinSecurityController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _allTrainings.assignAll([
-      TrainingItem(
-        id: '4',
-        observerName: 'Guy Hawkins',
-        observerImage: 'assets/images/nirob.jpg',
-        date: 'Dec 16, 2024',
-        time: '11:30 AM',
-        dateTime: DateTime(2024, 12, 16, 11, 30),
-        gate: 'Gate A-03',
-        shipNumber: 'N123DL',
-        role: 'Supervisor',
-        aircraft: 'Boeing 757-300 (75Y)',
-        supervisorName: 'Guy Hawkins',
-        supervisorRole: 'Supervisor',
-        selectedAreas: ['Front Galley', 'FWD LAV', 'Overhead Bins'],
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-        isPassed: true,
-        areaResults: [
-          CabinSecurityAreaResult(
-            area: 'Front Galley',
-            status: 'pass',
-            pictures: ['assets/images/indor.png', 'assets/images/window.png'],
-            subItems: [
-              CabinSecuritySubItem(name: 'Counter / Surface', status: 'pass'),
-              CabinSecuritySubItem(
-                name: 'Storage Compartments',
-                status: 'pass',
-              ),
-              CabinSecuritySubItem(name: 'Oven / Microwave', status: 'pass'),
-              CabinSecuritySubItem(name: 'Coffee Maker', status: 'pass'),
-              CabinSecuritySubItem(name: 'Trash', status: 'pass'),
-              CabinSecuritySubItem(name: 'Floor', status: 'pass'),
-            ],
-          ),
-          CabinSecurityAreaResult(
-            area: 'FWD LAV',
-            status: 'pass',
-            subItems: [
-              CabinSecuritySubItem(name: 'Trash Bin', status: 'pass'),
-              CabinSecuritySubItem(name: 'Under Sink', status: 'pass'),
-              CabinSecuritySubItem(name: 'Mirror / Cabinet', status: 'pass'),
-              CabinSecuritySubItem(name: 'Toilet Area', status: 'pass'),
-              CabinSecuritySubItem(name: 'Floor', status: 'pass'),
-              CabinSecuritySubItem(name: 'Counter', status: 'pass'),
-            ],
-          ),
-          CabinSecurityAreaResult(
-            area: 'Overhead Bins',
-            status: 'pass',
-            subItems: [
-              CabinSecuritySubItem(name: 'Bin Row 1–6', status: 'pass'),
-              CabinSecuritySubItem(name: 'Bin Row 7–14', status: 'pass'),
-            ],
-          ),
-        ],
-        otherFindings: '',
-        additionalNotes: 'All agents performed well.',
-      ),
-      TrainingItem(
-        id: '3',
-        observerName: 'Theresa Webb',
-        observerImage: 'assets/images/nirob.jpg',
-        date: 'Dec 15, 2024',
-        time: '4:15 PM',
-        dateTime: DateTime(2024, 12, 15, 16, 15),
-        gate: 'Gate C-07',
-        shipNumber: 'N456AA',
-        role: 'Duty Manager',
-        aircraft: 'Boeing 737-800',
-        supervisorName: 'Theresa Webb',
-        supervisorRole: 'Duty Manager',
-        selectedAreas: ['Main Cabin', 'Rear Galley'],
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-        isPassed: true,
-        areaResults: [
-          CabinSecurityAreaResult(
-            area: 'Main Cabin',
-            status: 'pass',
-            subItems: [
-              CabinSecuritySubItem(name: 'Seat Cushion', status: 'pass'),
-              CabinSecuritySubItem(name: 'Seat Back Pocket', status: 'pass'),
-              CabinSecuritySubItem(name: 'Overhead Bin', status: 'pass'),
-              CabinSecuritySubItem(name: 'Tray Table', status: 'pass'),
-              CabinSecuritySubItem(name: 'Under Seat', status: 'pass'),
-              CabinSecuritySubItem(name: 'Floor / Carpet', status: 'pass'),
-            ],
-          ),
-          CabinSecurityAreaResult(
-            area: 'Rear Galley',
-            status: 'pass',
-            subItems: [
-              CabinSecuritySubItem(name: 'Counter / Surface', status: 'pass'),
-              CabinSecuritySubItem(
-                name: 'Storage Compartments',
-                status: 'pass',
-              ),
-              CabinSecuritySubItem(name: 'Oven / Microwave', status: 'pass'),
-              CabinSecuritySubItem(name: 'Trash', status: 'pass'),
-              CabinSecuritySubItem(name: 'Floor', status: 'pass'),
-            ],
-          ),
-        ],
-      ),
-      TrainingItem(
-        id: '2',
-        observerName: 'Kristin Watson',
-        observerImage: 'assets/images/mursalin.jpg',
-        date: 'Dec 15, 2024',
-        time: '9:00 AM',
-        dateTime: DateTime(2024, 12, 15, 9, 0),
-        gate: 'Gate B-04',
-        shipNumber: 'N789UA',
-        role: 'Supervisor',
-        aircraft: 'Airbus A320',
-        supervisorName: 'Kristin Watson',
-        supervisorRole: 'Supervisor',
-        selectedAreas: ['Seat Pockets', 'AFT LAV L', 'Main Cabin'],
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-        isPassed: false,
-        areaResults: [
-          CabinSecurityAreaResult(
-            area: 'Seat Pockets',
-            status: 'fail',
-            subItems: [
-              CabinSecuritySubItem(name: 'Row 1–10 Pockets', status: 'pass'),
-              CabinSecuritySubItem(name: 'Row 11–20 Pockets', status: 'fail'),
-            ],
-          ),
-          CabinSecurityAreaResult(
-            area: 'AFT LAV L',
-            status: 'fail',
-            subItems: [
-              CabinSecuritySubItem(name: 'Trash Bin', status: 'pass'),
-              CabinSecuritySubItem(name: 'Under Sink', status: 'fail'),
-              CabinSecuritySubItem(name: 'Mirror / Cabinet', status: 'pass'),
-              CabinSecuritySubItem(name: 'Toilet Area', status: 'pass'),
-            ],
-          ),
-          CabinSecurityAreaResult(
-            area: 'Main Cabin',
-            status: 'pass',
-            subItems: [
-              CabinSecuritySubItem(name: 'Seat Cushion', status: 'pass'),
-              CabinSecuritySubItem(name: 'Tray Table', status: 'pass'),
-            ],
-          ),
-        ],
-        otherFindings: 'Test object not found under seat 22B.',
-        additionalNotes: 'Retraining scheduled for next shift.',
-      ),
-      TrainingItem(
-        id: '1',
-        observerName: 'Jane Cooper',
-        observerImage: 'assets/images/nirob.jpg',
-        date: 'Dec 14, 2024',
-        time: '2:30 PM',
-        dateTime: DateTime(2024, 12, 14, 14, 30),
-        gate: 'Gate A-12',
-        shipNumber: 'N321DL',
-        role: 'General Manager',
-        aircraft: 'Boeing 757-300 (75Y)',
-        supervisorName: 'Jane Cooper',
-        supervisorRole: 'General Manager',
-        selectedAreas: ['Overhead Bins', 'Front Galley'],
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-        isPassed: false,
-        areaResults: [
-          CabinSecurityAreaResult(
-            area: 'Overhead Bins',
-            status: 'fail',
-            subItems: [
-              CabinSecuritySubItem(name: 'Bin Row 1-6', status: 'pass'),
-              CabinSecuritySubItem(name: 'Bin Row 7-14', status: 'fail'),
-            ],
-          ),
-          CabinSecurityAreaResult(
-            area: 'Front Galley',
-            status: 'pass',
-            subItems: [
-              CabinSecuritySubItem(name: 'Counter / Surface', status: 'pass'),
-              CabinSecuritySubItem(name: 'Trash', status: 'pass'),
-            ],
-          ),
-        ],
-        otherFindings: 'Overhead bin in row 14 missed.',
-      ),
-    ]);
-    _applyFilter();
+    loadTrainings();
+  }
+
+  Future<void> loadTrainings() async {
+    isLoading.value = true;
+
+    try {
+      final response = await _api.listCabinSecurityTrainings(
+        queryParameters: {
+          'page': 1,
+          'limit': 100,
+        },
+      );
+
+      final items = List<Map<String, dynamic>>.from(
+        (response['items'] as List?) ?? const <dynamic>[],
+      );
+
+      _allTrainings.assignAll(items.map(_mapTrainingListItem));
+      _applyFilter();
+    } on ApiException catch (error) {
+      _allTrainings.clear();
+      filteredTrainings.clear();
+      Get.snackbar(
+        'Trainings Unavailable',
+        error.message,
+        backgroundColor: _Colors.fail,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } catch (_) {
+      _allTrainings.clear();
+      filteredTrainings.clear();
+      Get.snackbar(
+        'Trainings Unavailable',
+        'Unable to load cabin security records right now.',
+        backgroundColor: _Colors.fail,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<TrainingItem> loadTrainingDetail(String id) async {
+    final response = await _api.getCabinSecurityTraining(id);
+    return _mapTrainingDetail(response);
+  }
+
+  TrainingItem _mapTrainingListItem(Map<String, dynamic> item) {
+    final trainingAt = DateTime.tryParse(
+      item['trainingAt']?.toString() ?? '',
+    )?.toLocal();
+    final thumbnails = List<dynamic>.from(item['thumbnails'] as List? ?? const []);
+    final thumbnailUrls = thumbnails
+        .map((entry) => entry.toString())
+        .where((entry) => entry.isNotEmpty)
+        .map(_api.buildFileContentUrl)
+        .toList();
+
+    return TrainingItem(
+      id: item['id']?.toString() ?? '',
+      observerName: (item['auditorName'] as String?)?.trim() ?? 'Unknown',
+      observerImage: 'assets/images/nirob.jpg',
+      date: trainingAt == null ? '' : DateFormat('MMM d, y').format(trainingAt),
+      time: trainingAt == null ? '' : DateFormat('h:mm a').format(trainingAt),
+      dateTime: trainingAt ?? DateTime.now(),
+      gate: _formatGateLabel(item['gateCode']?.toString() ?? ''),
+      locationImage: thumbnailUrls.isNotEmpty
+          ? thumbnailUrls.first
+          : 'assets/images/indor.png',
+      locationImage2: thumbnailUrls.length > 1
+          ? thumbnailUrls[1]
+          : 'assets/images/window.png',
+      isPassed: item['overallResult'] == 'PASS',
+      areaResults: const [],
+    );
+  }
+
+  TrainingItem _mapTrainingDetail(Map<String, dynamic> item) {
+    final trainingAt = DateTime.tryParse(
+      item['trainingAt']?.toString() ?? '',
+    )?.toLocal();
+    final results = List<Map<String, dynamic>>.from(
+      (item['results'] as List?) ?? const <dynamic>[],
+    );
+    final files = List<Map<String, dynamic>>.from(
+      (item['files'] as List?) ?? const <dynamic>[],
+    );
+    final pictureUrls = files
+        .map((entry) => entry['fileId']?.toString() ?? '')
+        .where((entry) => entry.isNotEmpty)
+        .map(_api.buildFileContentUrl)
+        .toList();
+
+    return TrainingItem(
+      id: item['id']?.toString() ?? '',
+      observerName:
+          (item['auditorNameSnapshot'] as String?)?.trim() ?? 'Unknown',
+      observerImage: 'assets/images/nirob.jpg',
+      date: trainingAt == null ? '' : DateFormat('MMM d, y').format(trainingAt),
+      time: trainingAt == null ? '' : DateFormat('h:mm a').format(trainingAt),
+      dateTime: trainingAt ?? DateTime.now(),
+      gate: _formatGateLabel(item['gateCodeSnapshot']?.toString() ?? ''),
+      shipNumber: (item['shipNumber'] as String?)?.trim() ?? '',
+      role: (item['auditorRoleSnapshot'] as String?)?.trim() ?? '',
+      locationImage: pictureUrls.isNotEmpty
+          ? pictureUrls.first
+          : 'assets/images/indor.png',
+      locationImage2: pictureUrls.length > 1
+          ? pictureUrls[1]
+          : 'assets/images/window.png',
+      isPassed: item['overallResult'] == 'PASS',
+      areaResults: results.map(_mapAreaResult).toList(),
+      otherFindings: (item['otherFindings'] as String?)?.trim() ?? '',
+      additionalNotes: (item['additionalNotes'] as String?)?.trim() ?? '',
+      aircraft: '',
+      supervisorName:
+          (item['auditorNameSnapshot'] as String?)?.trim() ?? 'Unknown',
+      supervisorRole:
+          (item['auditorRoleSnapshot'] as String?)?.trim() ?? '',
+      selectedAreas: results
+          .map((result) => result['areaLabelSnapshot']?.toString() ?? '')
+          .where((label) => label.isNotEmpty)
+          .toList(),
+    );
+  }
+
+  CabinSecurityAreaResult _mapAreaResult(Map<String, dynamic> item) {
+    final files = List<Map<String, dynamic>>.from(
+      (item['files'] as List?) ?? const <dynamic>[],
+    );
+
+    return CabinSecurityAreaResult(
+      area: (item['areaLabelSnapshot'] as String?)?.trim() ?? 'Area',
+      status: item['result'] == 'PASS' ? 'pass' : 'fail',
+      subItems: const [],
+      pictures: files
+          .map((entry) => entry['fileId']?.toString() ?? '')
+          .where((entry) => entry.isNotEmpty)
+          .map(_api.buildFileContentUrl)
+          .toList(),
+    );
+  }
+
+  String _formatGateLabel(String gateCode) {
+    final trimmed = gateCode.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    return trimmed.toLowerCase().startsWith('gate ')
+        ? trimmed
+        : 'Gate $trimmed';
   }
 
   void applyFilter({
@@ -525,7 +494,10 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
 
         // Doc: "+ Conduct New Search" button
         GestureDetector(
-          onTap: () => Get.to(() => const CabinQualityAuditScreenN()),
+          onTap: () async {
+            await Get.to(() => const CabinQualityAuditScreenN());
+            await controller.loadTrainings();
+          },
           child: Container(
             padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
             decoration: BoxDecoration(
@@ -549,6 +521,10 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
   // ── Training List ────────────────────────────────────────
   Widget _buildTrainingList() {
     return Obx(() {
+      if (controller.isLoading.value) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
       final trainings = controller.filteredTrainings;
 
       if (trainings.isEmpty) {
@@ -759,32 +735,76 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
 
   // ── Location Image thumbnail ─────────────────────────────
   Widget _buildLocationImage(String imagePath) {
+    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8.r),
-      child: Image.asset(
-        imagePath,
-        width: 64.w,
-        height: 56.h,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: 64.w,
-          height: 56.h,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade200,
-            borderRadius: BorderRadius.circular(8.r),
-          ),
-          child: Icon(
-            Icons.image_outlined,
-            color: Colors.grey.shade400,
-            size: 22.sp,
-          ),
-        ),
+      child: imagePath.startsWith('http')
+          ? Image.network(
+              imagePath,
+              width: 64.w,
+              height: 56.h,
+              fit: BoxFit.cover,
+              headers: imageHeaders,
+              errorBuilder: (_, __, ___) => _buildMissingImage(),
+            )
+          : Image.asset(
+              imagePath,
+              width: 64.w,
+              height: 56.h,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildMissingImage(),
+            ),
+    );
+  }
+
+  Widget _buildMissingImage() {
+    return Container(
+      width: 64.w,
+      height: 56.h,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Icon(
+        Icons.image_outlined,
+        color: Colors.grey.shade400,
+        size: 22.sp,
       ),
     );
   }
 
   // ── View-Only Detail Sheet ───────────────────────────────
-  void _showViewOnlyDetail(TrainingItem item) {
+  Future<void> _showViewOnlyDetail(TrainingItem training) async {
+    TrainingItem item = training;
+    try {
+      Get.dialog(
+        const Center(child: CircularProgressIndicator()),
+        barrierDismissible: false,
+      );
+      item = await controller.loadTrainingDetail(training.id);
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Training Unavailable',
+        error.message,
+        backgroundColor: _Colors.fail,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Training Unavailable',
+        'Unable to load this training record right now.',
+        backgroundColor: _Colors.fail,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } finally {
+      if (Get.isDialogOpen ?? false) {
+        Get.back();
+      }
+    }
+
     final scoreColor = item.isPassed ? _Colors.pass : _Colors.fail;
 
     Get.bottomSheet(

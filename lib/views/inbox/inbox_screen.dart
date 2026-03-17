@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+import '../../services/api_exception.dart';
+import '../../services/app_api_service.dart';
+import '../../services/session_service.dart';
 
 // =====================
 // COLORS
@@ -33,6 +38,16 @@ class ChatListItem {
   });
 }
 
+class InboxTabItem {
+  final String key;
+  final String label;
+
+  const InboxTabItem({
+    required this.key,
+    required this.label,
+  });
+}
+
 class ChatMessage {
   final String id;
   final String senderName;
@@ -55,81 +70,115 @@ class ChatMessage {
 // INBOX CONTROLLER
 // =====================
 class InboxController extends GetxController {
+  final AppApiService _api = Get.find<AppApiService>();
   final RxList<ChatListItem> chatList = <ChatListItem>[].obs;
+  final RxBool isLoading = true.obs;
   final TextEditingController searchController = TextEditingController();
   final RxString searchQuery = ''.obs;
-  final RxString selectedTab = 'All'.obs;
+  final RxString selectedTab = 'all'.obs;
+  final RxInt unreadCount = 0.obs;
 
-  final List<String> tabs = ['All', 'Unread (3)', 'Groups', 'Favorite'];
+  List<InboxTabItem> get tabs => [
+    const InboxTabItem(key: 'all', label: 'All'),
+    InboxTabItem(key: 'unread', label: 'Unread (${unreadCount.value})'),
+    const InboxTabItem(key: 'groups', label: 'Groups'),
+    const InboxTabItem(key: 'favorite', label: 'Favorite'),
+  ];
 
   @override
   void onInit() {
     super.onInit();
-    chatList.assignAll([
-      ChatListItem(
-        id: '1',
-        userName: 'Dianne Russell',
-        phone: '(209) 555-0104',
-        userImage: 'assets/images/mursalin.jpg',
-        lastMessage: '(209) 555-0104',
-        time: '9:30 am',
-        isOnline: true,
-        unreadCount: 1,
-      ),
-      ChatListItem(
-        id: '2',
-        userName: 'Marvin McKinney',
-        phone: '(302) 555-0107',
-        userImage: 'assets/images/nirob.jpg',
-        lastMessage: '(302) 555-0107',
-        time: '9:30 am',
-        isOnline: true,
-        unreadCount: 3,
-      ),
-      ChatListItem(
-        id: '3',
-        userName: 'Bessie Cooper',
-        phone: '(808) 555-0111',
-        userImage: 'assets/images/Bessie.png',
-        lastMessage: '(808) 555-0111',
-        time: '9:30 am',
-        isOnline: true,
-        unreadCount: 1,
-      ),
-      ChatListItem(
-        id: '4',
-        userName: 'Esther Howard',
-        phone: '(505) 555-0125',
-        userImage: 'assets/images/Esther.png',
-        lastMessage: '(505) 555-0125',
-        time: '9:30 am',
-        isOnline: false,
-        unreadCount: 1,
-      ),
-      ChatListItem(
-        id: '5',
-        userName: 'Eleanor Pena',
-        phone: '(229) 555-0109',
-        userImage: 'assets/images/Eleanor.png',
-        lastMessage: '(229) 555-0109',
-        time: '9:30 am',
-        isOnline: false,
-        unreadCount: 0,
-      ),
-      ChatListItem(
-        id: '6',
-        userName: 'Kristin Watson',
-        phone: '(201) 555-0124',
-        userImage: 'assets/images/Kristin.png',
-        lastMessage: '(201) 555-0124',
-        time: '9:30 am',
-        isOnline: false,
-        unreadCount: 0,
-      ),
-    ]);
+    ever<String>(selectedTab, (_) => loadConversations());
+    loadConversations();
   }
 
   void updateSearch(String query) => searchQuery.value = query;
+
+  Future<void> loadConversations() async {
+    isLoading.value = true;
+
+    try {
+      final conversations = await _api.listConversations(
+        tab: selectedTab.value == 'all' ? null : selectedTab.value,
+        query: searchQuery.value.trim().isEmpty ? null : searchQuery.value.trim(),
+      );
+
+      final mapped = conversations
+          .map(_mapConversation)
+          .where((item) => item.id.isNotEmpty)
+          .toList();
+
+      unreadCount.value = mapped.fold<int>(
+        0,
+        (total, item) => total + item.unreadCount,
+      );
+      chatList.assignAll(mapped);
+    } on ApiException catch (error) {
+      chatList.clear();
+      unreadCount.value = 0;
+      Get.snackbar(
+        'Chat Unavailable',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      chatList.clear();
+      unreadCount.value = 0;
+      Get.snackbar(
+        'Chat Unavailable',
+        'Unable to load conversations right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  ChatListItem _mapConversation(Map<String, dynamic> item) {
+    final otherParticipant =
+        item['otherParticipant'] is Map<String, dynamic>
+            ? item['otherParticipant'] as Map<String, dynamic>
+            : <String, dynamic>{};
+    final timestamp = item['timestamp']?.toString() ?? '';
+    final preview = (item['lastMessagePreview'] as String?)?.trim() ?? '';
+
+    return ChatListItem(
+      id: (item['id'] as String?) ?? '',
+      userName: ((item['name'] as String?)?.trim().isNotEmpty ?? false)
+          ? (item['name'] as String).trim()
+          : 'Conversation',
+      phone:
+          (otherParticipant['uid'] as String?)?.trim().isNotEmpty == true
+              ? (otherParticipant['uid'] as String).trim()
+              : ((otherParticipant['email'] as String?)?.trim() ?? ''),
+      userImage: '',
+      lastMessage: preview.isNotEmpty ? preview : 'No messages yet',
+      time: _formatConversationTime(timestamp),
+      isOnline: item['isOnline'] == true,
+      unreadCount: (item['unreadCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  String _formatConversationTime(String rawTimestamp) {
+    final timestamp = DateTime.tryParse(rawTimestamp)?.toLocal();
+    if (timestamp == null) {
+      return '';
+    }
+
+    final now = DateTime.now();
+    final isSameDay =
+        timestamp.year == now.year &&
+        timestamp.month == now.month &&
+        timestamp.day == now.day;
+
+    return isSameDay
+        ? DateFormat('h:mm a').format(timestamp).toLowerCase()
+        : DateFormat('MMM d').format(timestamp);
+  }
 
   List<ChatListItem> getFilteredChats() {
     return chatList.where((chat) {
@@ -254,9 +303,9 @@ class _InboxScreenState extends State<InboxScreen> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: controller.tabs.map((tab) {
-            final isSelected = controller.selectedTab.value == tab;
+            final isSelected = controller.selectedTab.value == tab.key;
             return GestureDetector(
-              onTap: () => controller.selectedTab.value = tab,
+              onTap: () => controller.selectedTab.value = tab.key,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 margin: EdgeInsets.only(right: 8.w),
@@ -271,7 +320,7 @@ class _InboxScreenState extends State<InboxScreen> {
                   borderRadius: BorderRadius.circular(20.r),
                 ),
                 child: Text(
-                  tab,
+                  tab.label,
                   style: GoogleFonts.poppins(
                     fontSize: 13.sp,
                     fontWeight: FontWeight.w500,
@@ -291,6 +340,10 @@ class _InboxScreenState extends State<InboxScreen> {
   // ── Chat List ───────────────────────────────────────────
   Widget _buildChatList() {
     return Obx(() {
+      if (controller.isLoading.value) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
       final chats = controller.getFilteredChats();
       if (chats.isEmpty) {
         return Center(
@@ -317,9 +370,11 @@ class _InboxScreenState extends State<InboxScreen> {
     return InkWell(
       onTap: () {
         Get.to(() => ChatScreen(
+          conversationId: chat.id,
           contactName: chat.userName,
           contactPhone: chat.phone,
           contactImage: chat.userImage,
+          isOnline: chat.isOnline,
         ));
       },
       child: Container(
@@ -329,14 +384,7 @@ class _InboxScreenState extends State<InboxScreen> {
             // Avatar with online dot
             Stack(
               children: [
-                CircleAvatar(
-                  radius: 26.r,
-                  backgroundImage: AssetImage(chat.userImage),
-                  backgroundColor: Colors.grey.shade200,
-                  child: chat.userImage.isEmpty
-                      ? Icon(Icons.person, color: Colors.grey, size: 26.sp)
-                      : null,
-                ),
+                _buildConversationAvatar(chat),
                 if (chat.isOnline)
                   Positioned(
                     right: 1,
@@ -369,7 +417,7 @@ class _InboxScreenState extends State<InboxScreen> {
                   ),
                   SizedBox(height: 2.h),
                   Text(
-                    chat.phone,
+                    chat.lastMessage,
                     style: GoogleFonts.poppins(
                       fontSize: 12.sp,
                       color: AppColors.textGrey,
@@ -417,75 +465,208 @@ class _InboxScreenState extends State<InboxScreen> {
       ),
     );
   }
+
+  Widget _buildConversationAvatar(ChatListItem chat) {
+    final image = chat.userImage.trim();
+    final initials = chat.userName.isNotEmpty
+        ? chat.userName
+            .split(' ')
+            .where((part) => part.isNotEmpty)
+            .take(2)
+            .map((part) => part[0].toUpperCase())
+            .join()
+        : '?';
+
+    ImageProvider<Object>? imageProvider;
+    if (image.startsWith('http')) {
+      imageProvider = NetworkImage(image);
+    } else if (image.isNotEmpty) {
+      imageProvider = AssetImage(image);
+    }
+
+    return CircleAvatar(
+      radius: 26.r,
+      backgroundImage: imageProvider,
+      backgroundColor: Colors.grey.shade200,
+      child: imageProvider == null
+          ? Text(
+              initials,
+              style: GoogleFonts.poppins(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+            )
+          : null,
+    );
+  }
 }
 
 // =====================
 // CHAT CONTROLLER
 // =====================
 class ChatController extends GetxController {
+  ChatController({
+    required this.conversationId,
+  });
+
+  final String conversationId;
+  final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
   final RxList<ChatMessage> messages = <ChatMessage>[].obs;
   final TextEditingController messageController = TextEditingController();
   final RxBool showAttachments = false.obs;
+  final RxBool isLoading = true.obs;
+  final RxBool isSending = false.obs;
 
   @override
   void onInit() {
     super.onInit();
-    messages.assignAll([
-      ChatMessage(
-        id: '1',
-        senderName: 'John Smith',
-        senderImage: 'assets/images/mursalin.jpg',
-        message: "I'm planning to go to the gym later. Want to grab coffee after?",
-        time: '10:30 AM',
-        isUserMessage: false,
-      ),
-      ChatMessage(
-        id: '2',
-        senderName: 'You',
-        message: 'Sure! Let me check my schedule',
-        time: '10:30 AM',
-        isUserMessage: true,
-      ),
-      ChatMessage(
-        id: '3',
-        senderName: 'John Smith',
-        senderImage: 'assets/images/mursalin.jpg',
-        message: 'Perfect! I know a great place downtown.',
-        time: '10:30 AM',
-        isUserMessage: false,
-      ),
-      ChatMessage(
-        id: '4',
-        senderName: 'You',
-        message: 'How about 4 PM? I should be done by then.',
-        time: '10:30 AM',
-        isUserMessage: true,
-      ),
-      ChatMessage(
-        id: '5',
-        senderName: 'You',
-        message: 'Hey! How was the new design project coming along?',
-        time: '10:30 AM',
-        isUserMessage: true,
-      ),
-    ]);
+    loadMessages();
   }
 
-  void sendMessage(String text) {
-    if (text.trim().isEmpty) return;
+  Future<void> loadMessages() async {
+    isLoading.value = true;
+
+    try {
+      final response = await _api.getConversationMessages(
+        conversationId,
+        limit: 50,
+      );
+      final items = List<Map<String, dynamic>>.from(
+        (response['items'] as List?) ?? const <dynamic>[],
+      );
+
+      messages.assignAll(items.reversed.map(_mapMessage));
+      await _markMessagesAsRead(items);
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Messages Unavailable',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Messages Unavailable',
+        'Unable to load this conversation right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  ChatMessage _mapMessage(Map<String, dynamic> item) {
+    final sender =
+        item['sender'] is Map<String, dynamic>
+            ? item['sender'] as Map<String, dynamic>
+            : <String, dynamic>{};
+    final currentUserId = _session.user?['id']?.toString() ?? '';
+    final senderId = sender['id']?.toString() ?? '';
+    final messageType = item['messageType']?.toString() ?? '';
+    final encryptedPayload = (item['encryptedPayload'] as String?)?.trim() ?? '';
+    final preview = (item['previewText'] as String?)?.trim() ?? '';
+
+    String content = encryptedPayload.isNotEmpty ? encryptedPayload : preview;
+    if (content.isEmpty && messageType.isNotEmpty && messageType != 'TEXT') {
+      content = messageType.replaceAll('_', ' ').toLowerCase();
+    }
+    if (content.isEmpty) {
+      content = 'Message';
+    }
+
+    return ChatMessage(
+      id: item['id']?.toString() ?? '',
+      senderName:
+          (sender['name'] as String?)?.trim().isNotEmpty == true
+              ? (sender['name'] as String).trim()
+              : 'Unknown',
+      senderImage: null,
+      message: content,
+      time: _formatMessageTime(item['createdAt']?.toString() ?? ''),
+      isUserMessage: senderId == currentUserId,
+    );
+  }
+
+  String _formatMessageTime(String rawTimestamp) {
+    final timestamp = DateTime.tryParse(rawTimestamp)?.toLocal();
+    if (timestamp == null) {
+      return '';
+    }
+    return DateFormat('h:mm a').format(timestamp);
+  }
+
+  Future<void> _markMessagesAsRead(List<Map<String, dynamic>> items) async {
+    final currentUserId = _session.user?['id']?.toString() ?? '';
+    for (final item in items) {
+      final sender =
+          item['sender'] is Map<String, dynamic>
+              ? item['sender'] as Map<String, dynamic>
+              : <String, dynamic>{};
+      final senderId = sender['id']?.toString() ?? '';
+      final messageId = item['id']?.toString() ?? '';
+
+      if (messageId.isEmpty || senderId.isEmpty || senderId == currentUserId) {
+        continue;
+      }
+
+      try {
+        await _api.markMessageDelivered(messageId);
+        await _api.markMessageRead(messageId);
+      } catch (_) {
+        // Best-effort receipts should not block the thread UI.
+      }
+    }
+  }
+
+  Future<void> sendMessage(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || isSending.value) return;
+
+    isSending.value = true;
     final now = DateTime.now();
     final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
     final minute = now.minute.toString().padLeft(2, '0');
     final period = now.hour >= 12 ? 'PM' : 'AM';
 
-    messages.add(ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      senderName: 'You',
-      message: text.trim(),
-      time: '$hour:$minute $period',
-      isUserMessage: true,
-    ));
-    messageController.clear();
+    try {
+      await _api.sendTextMessage(conversationId, trimmed);
+      messages.add(
+        ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          senderName: 'You',
+          message: trimmed,
+          time: '$hour:$minute $period',
+          isUserMessage: true,
+        ),
+      );
+      messageController.clear();
+      if (Get.isRegistered<InboxController>()) {
+        await Get.find<InboxController>().loadConversations();
+      }
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Message Failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Message Failed',
+        'Unable to send this message right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isSending.value = false;
+    }
   }
 
   void toggleAttachments() => showAttachments.toggle();
@@ -501,15 +682,19 @@ class ChatController extends GetxController {
 // CHAT SCREEN
 // =====================
 class ChatScreen extends StatefulWidget {
+  final String conversationId;
   final String contactName;
   final String contactPhone;
   final String contactImage;
+  final bool isOnline;
 
   const ChatScreen({
     super.key,
+    required this.conversationId,
     required this.contactName,
     required this.contactPhone,
     required this.contactImage,
+    required this.isOnline,
   });
 
   @override
@@ -524,7 +709,19 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    controller = Get.put(ChatController(), tag: widget.contactName);
+    controller = Get.put(
+      ChatController(conversationId: widget.conversationId),
+      tag: widget.conversationId,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    if (Get.isRegistered<ChatController>(tag: widget.conversationId)) {
+      Get.delete<ChatController>(tag: widget.conversationId, force: true);
+    }
+    super.dispose();
   }
 
   void _scrollToBottom() {
@@ -542,28 +739,33 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FB),
       appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          Expanded(
-            child: Obx(() => ListView.builder(
-              reverse: true,
-              controller: _scrollController,
-              padding:
-              EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-              itemCount: controller.messages.length,
-              itemBuilder: (context, index) {
-                final msg = controller.messages[
-                controller.messages.length - 1 - index];
-                return _buildBubble(msg);
-              },
-            )),
-          ),
-          _buildInputArea(),
-          Obx(() => controller.showAttachments.value
-              ? _buildAttachmentPanel()
-              : const SizedBox.shrink()),
-        ],
-      ),
+      body: Obx(() {
+        if (controller.isLoading.value && controller.messages.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                reverse: true,
+                controller: _scrollController,
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                itemCount: controller.messages.length,
+                itemBuilder: (context, index) {
+                  final msg =
+                      controller.messages[controller.messages.length - 1 - index];
+                  return _buildBubble(msg);
+                },
+              ),
+            ),
+            _buildInputArea(),
+            controller.showAttachments.value
+                ? _buildAttachmentPanel()
+                : const SizedBox.shrink(),
+          ],
+        );
+      }),
     );
   }
 
@@ -579,11 +781,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       title: Row(
         children: [
-          CircleAvatar(
-            radius: 18.r,
-            backgroundImage: AssetImage(widget.contactImage),
-            backgroundColor: Colors.grey.shade200,
-          ),
+          _buildHeaderAvatar(),
           SizedBox(width: 10.w),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,7 +795,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               Text(
-                widget.contactPhone,
+                widget.isOnline
+                    ? 'Online'
+                    : (widget.contactPhone.isEmpty
+                        ? 'Direct conversation'
+                        : widget.contactPhone),
                 style: GoogleFonts.poppins(
                   fontSize: 11.sp,
                   color: AppColors.textGrey,
@@ -618,6 +820,41 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── Message Bubble ──────────────────────────────────────
+  Widget _buildHeaderAvatar() {
+    final image = widget.contactImage.trim();
+    ImageProvider<Object>? imageProvider;
+    if (image.startsWith('http')) {
+      imageProvider = NetworkImage(image);
+    } else if (image.isNotEmpty) {
+      imageProvider = AssetImage(image);
+    }
+
+    final initials = widget.contactName.isNotEmpty
+        ? widget.contactName
+            .split(' ')
+            .where((part) => part.isNotEmpty)
+            .take(2)
+            .map((part) => part[0].toUpperCase())
+            .join()
+        : '?';
+
+    return CircleAvatar(
+      radius: 18.r,
+      backgroundImage: imageProvider,
+      backgroundColor: Colors.grey.shade200,
+      child: imageProvider == null
+          ? Text(
+              initials,
+              style: GoogleFonts.poppins(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+            )
+          : null,
+    );
+  }
+
   Widget _buildBubble(ChatMessage msg) {
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
@@ -740,8 +977,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     vertical: 12.h,
                   ),
                 ),
-                onSubmitted: (v) {
-                  controller.sendMessage(v);
+                onSubmitted: (v) async {
+                  await controller.sendMessage(v);
                   _scrollToBottom();
                 },
               ),
@@ -750,8 +987,8 @@ class _ChatScreenState extends State<ChatScreen> {
           SizedBox(width: 10.w),
           // Send button
           GestureDetector(
-            onTap: () {
-              controller.sendMessage(controller.messageController.text);
+            onTap: () async {
+              await controller.sendMessage(controller.messageController.text);
               _scrollToBottom();
             },
             child: Container(
@@ -842,10 +1079,4 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    Get.delete<ChatController>(tag: widget.contactName);
-    super.dispose();
-  }
 }

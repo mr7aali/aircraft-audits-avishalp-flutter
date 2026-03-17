@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+import '../../../services/api_exception.dart';
+import '../../../services/app_api_service.dart';
 
 // =====================
 // COLORS
@@ -10,7 +14,6 @@ class _Colors {
   static const Color primary = Color(0xFF3D5AFE);
   static const Color background = Color(0xFFF5F6FA);
   static const Color cardBg = Color(0xFFFFFFFF);
-  static const Color textDark = Color(0xFF1A1A2E);
   static const Color textGrey = Color(0xFF9E9E9E);
   static const Color pass = Color(0xFF22C55E);
   static const Color fail = Color(0xFFEF4444);
@@ -158,6 +161,7 @@ class CabinAuditDetailModel {
 // CONTROLLER
 // =====================
 class CabinQualityAuditController extends GetxController {
+  final AppApiService _api = Get.find<AppApiService>();
   final Rx<CabinAuditDetailModel> detail = CabinAuditDetailModel(
     auditorName: 'Sarah Johnson',
     date: 'Dec 15, 2024',
@@ -272,9 +276,121 @@ class CabinQualityAuditController extends GetxController {
     ],
   ).obs;
 
+  final RxBool isLoading = false.obs;
   final Rx<AuditStatus?> filter = Rx<AuditStatus?>(null);
   final RxString currentDate = 'Dec 15, 2024 • 2:30 PM'.obs;
   final RxInt expandedAreaIndex = RxInt(-1);
+
+  Future<void> loadAudit(String id) async {
+    isLoading.value = true;
+
+    try {
+      final response = await _api.getCabinQualityAudit(id);
+      final auditAt = DateTime.tryParse(
+        response['auditAt']?.toString() ?? '',
+      )?.toLocal();
+      final responses = List<Map<String, dynamic>>.from(
+        (response['responses'] as List?) ?? const <dynamic>[],
+      );
+      final files = List<Map<String, dynamic>>.from(
+        (response['files'] as List?) ?? const <dynamic>[],
+      );
+
+      final combinedNotes = [
+        if ((response['otherFindings'] as String?)?.trim().isNotEmpty ?? false)
+          'Other Findings\n${(response['otherFindings'] as String).trim()}',
+        if ((response['additionalNotes'] as String?)?.trim().isNotEmpty ?? false)
+          'Additional Notes\n${(response['additionalNotes'] as String).trim()}',
+      ].join('\n\n');
+
+      detail.value = CabinAuditDetailModel(
+        auditorName:
+            (response['auditorNameSnapshot'] as String?)?.trim() ?? 'Unknown',
+        date: auditAt == null ? '' : DateFormat('MMM d, y').format(auditAt),
+        time: auditAt == null ? '' : DateFormat('h:mm a').format(auditAt),
+        gate: _formatGateLabel(response['gateCodeSnapshot']?.toString() ?? ''),
+        type: (response['cleanTypeSnapshot'] as String?)?.trim() ?? '',
+        tailNumber: 'Not provided',
+        auditedAreas: responses.map(_mapResponseToArea).toList(),
+        pictures: files
+            .map((entry) => entry['fileId']?.toString() ?? '')
+            .where((entry) => entry.isNotEmpty)
+            .map(_api.buildFileContentUrl)
+            .toList(),
+        notes: combinedNotes,
+      );
+      currentDate.value = auditAt == null
+          ? ''
+          : DateFormat('MMM d, y • h:mm a').format(auditAt);
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Audit Unavailable',
+        error.message,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Audit Unavailable',
+        'Unable to load this cabin quality audit right now.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  AuditedAreaResult _mapResponseToArea(Map<String, dynamic> item) {
+    final checklistItem =
+        item['checklistItem'] is Map<String, dynamic>
+            ? item['checklistItem'] as Map<String, dynamic>
+            : <String, dynamic>{};
+    final label = (checklistItem['label'] as String?)?.trim() ?? 'Checklist';
+    final files = List<Map<String, dynamic>>.from(
+      (item['files'] as List?) ?? const <dynamic>[],
+    );
+
+    return AuditedAreaResult(
+      areaId: label,
+      sectionLabel: label,
+      checkItems: [
+        CheckItemResult(
+          itemName: label,
+          status: _mapAuditStatus(item['response']?.toString() ?? 'NA'),
+        ),
+      ],
+      pictures: files
+          .map((entry) => entry['fileId']?.toString() ?? '')
+          .where((entry) => entry.isNotEmpty)
+          .map(_api.buildFileContentUrl)
+          .toList(),
+    );
+  }
+
+  AuditStatus _mapAuditStatus(String value) {
+    switch (value) {
+      case 'YES':
+        return AuditStatus.pass;
+      case 'NO':
+        return AuditStatus.fail;
+      default:
+        return AuditStatus.na;
+    }
+  }
+
+  String _formatGateLabel(String gateCode) {
+    final trimmed = gateCode.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    return trimmed.toLowerCase().startsWith('gate ')
+        ? trimmed
+        : 'Gate $trimmed';
+  }
 
   void previousDate() {}
   void nextDate() {}
@@ -288,7 +404,12 @@ class CabinQualityAuditController extends GetxController {
 // SCREEN
 // =====================
 class CabinQualityAuditScreen extends StatefulWidget {
-  const CabinQualityAuditScreen({super.key});
+  final String? auditId;
+
+  const CabinQualityAuditScreen({
+    super.key,
+    this.auditId,
+  });
 
   @override
   State<CabinQualityAuditScreen> createState() =>
@@ -304,6 +425,9 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
   void initState() {
     super.initState();
     controller = Get.put(CabinQualityAuditController());
+    if ((widget.auditId?.trim().isNotEmpty ?? false)) {
+      controller.loadAudit(widget.auditId!.trim());
+    }
   }
 
   @override
@@ -317,26 +441,39 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     return Scaffold(
       backgroundColor: _Colors.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildDateNavigation(),
-                    _buildScoreCard(),
-                    _buildInfoCard(),
-                    _buildAuditedAreasList(),
-                    _buildPicturesCard(),
-                    _buildNotesCard(),
-                    SizedBox(height: 24.h),
-                  ],
+        child: Obx(() {
+          if (controller.isLoading.value) {
+            return Column(
+              children: [
+                _buildAppBar(),
+                const Expanded(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ],
+            );
+          }
+
+          return Column(
+            children: [
+              _buildAppBar(),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildDateNavigation(),
+                      _buildScoreCard(),
+                      _buildInfoCard(),
+                      _buildAuditedAreasList(),
+                      _buildPicturesCard(),
+                      _buildNotesCard(),
+                      SizedBox(height: 24.h),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -884,13 +1021,15 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         scrollDirection: Axis.horizontal,
         itemCount: pictures.length,
         itemBuilder: (context, i) {
-          return Container(
-            width: 80.w,
-            margin: EdgeInsets.only(right: 8.w),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8.r),
-              image: DecorationImage(
-                image: AssetImage(pictures[i]),
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(8.r),
+            child: Container(
+              width: 80.w,
+              margin: EdgeInsets.only(right: 8.w),
+              child: _buildImageContent(
+                pictures[i],
+                width: 80.w,
+                height: 80.h,
                 fit: BoxFit.cover,
               ),
             ),
@@ -970,24 +1109,11 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
             itemBuilder: (context, index) {
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12.r),
-                child: Image.asset(
+                child: _buildImageContent(
                   images[index],
                   width: double.infinity,
                   height: 180.h,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: double.infinity,
-                    height: 180.h,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(12.r),
-                    ),
-                    child: Icon(
-                      Icons.image_outlined,
-                      color: Colors.grey.shade400,
-                      size: 40.sp,
-                    ),
-                  ),
                 ),
               );
             },
@@ -1014,6 +1140,50 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         ),
         SizedBox(height: 8.h),
       ],
+    );
+  }
+
+  Widget _buildImageContent(
+    String imagePath, {
+    required double width,
+    required double height,
+    BoxFit fit = BoxFit.cover,
+  }) {
+    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
+
+    if (imagePath.startsWith('http')) {
+      return Image.network(
+        imagePath,
+        width: width,
+        height: height,
+        fit: fit,
+        headers: imageHeaders,
+        errorBuilder: (_, __, ___) => _buildMissingImage(width, height),
+      );
+    }
+
+    return Image.asset(
+      imagePath,
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (_, __, ___) => _buildMissingImage(width, height),
+    );
+  }
+
+  Widget _buildMissingImage(double width, double height) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Icon(
+        Icons.image_outlined,
+        color: Colors.grey.shade400,
+        size: 40.sp,
+      ),
     );
   }
 
