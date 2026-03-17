@@ -7,11 +7,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/api_exception.dart';
+import '../../services/app_api_service.dart';
+import '../../services/session_service.dart';
+
 class _C {
   static const Color blue = Color(0xFF3D5AFE);
   static const Color ink = Color(0xFF0E0E10);
   static const Color border = Color(0xFFEAECF2);
-  static const Color placeholder = Color(0xFFC8CDD9);
 }
 
 class OtpPasswordVerificationScreen extends StatefulWidget {
@@ -22,6 +25,9 @@ class OtpPasswordVerificationScreen extends StatefulWidget {
 }
 
 class _OtpPasswordVerificationScreenState extends State<OtpPasswordVerificationScreen> {
+  final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
+
   // ── OTP fields ───────────────────────────────────────────
   final int _otpLength = 5;
   late List<TextEditingController> _controllers;
@@ -66,6 +72,42 @@ class _OtpPasswordVerificationScreenState extends State<OtpPasswordVerificationS
         }
       });
     });
+  }
+
+  Future<void> _handleResend() async {
+    final email = _session.passwordRecoveryEmail?.trim() ?? '';
+    if (email.isEmpty) {
+      _startResendTimer();
+      return;
+    }
+
+    try {
+      final response = await _api.requestForgotPassword(email);
+      final recoveryToken = (response['recoveryToken'] as String?)?.trim() ?? '';
+      if (recoveryToken.isNotEmpty) {
+        _session.savePasswordRecovery(token: recoveryToken, email: email);
+      }
+      if (!mounted) {
+        return;
+      }
+      _startResendTimer();
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Resend Failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Resend Failed',
+        'Unable to resend the password recovery email right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
   }
 
   String get _timerText {
@@ -147,7 +189,7 @@ class _OtpPasswordVerificationScreenState extends State<OtpPasswordVerificationS
                     children: [
                       // Subtitle
                       Text(
-                        'Enter the otp sent to your email address\nto reset your old ID',
+                        'Enter the OTP sent to your email address\nto continue resetting your password',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.dmSans(
                           fontSize: 13.sp,
@@ -168,7 +210,7 @@ class _OtpPasswordVerificationScreenState extends State<OtpPasswordVerificationS
                       // Resend / Timer
                       _canResend
                           ? GestureDetector(
-                        onTap: _startResendTimer,
+                        onTap: _handleResend,
                         child: Text(
                           'Resend OTP',
                           style: GoogleFonts.dmSans(

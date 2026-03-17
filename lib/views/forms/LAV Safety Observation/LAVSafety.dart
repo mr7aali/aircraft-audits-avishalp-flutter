@@ -1,15 +1,20 @@
 import 'dart:io';
+
 import 'package:avislap/utils/app_colors.dart';
 import 'package:avislap/utils/app_icons.dart';
 import 'package:avislap/utils/app_text.dart';
 import 'package:avislap/widgets/app_dropdown.dart';
-import 'package:avislap/widgets/report_submit_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
-import 'LavSafetyObservationScreen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:signature/signature.dart';
+
+import '../../../services/api_exception.dart';
+import '../../../services/app_api_service.dart';
+import '../../../services/session_service.dart';
+import 'LavSafetyObservationScreen.dart';
 
 class LAVSafetyScreen extends StatefulWidget {
   @override
@@ -17,6 +22,27 @@ class LAVSafetyScreen extends StatefulWidget {
 }
 
 class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
+  static const Map<String, String> _questionLabelsByKey = {
+    'chocks': 'Used Chocks',
+    'safety_stop': 'Safety Stop',
+    'guide_cone': 'Used Guide Cone',
+    'mask': 'Face Mask',
+    'gloves': 'Gloves',
+    'shoes': 'Shoes',
+    'dump': 'Dump',
+    'flush': 'Flush',
+    'fill': 'Fill',
+    'walkaround': '360 Walk Around',
+    'chock_removal': 'Chock Removal Process',
+  };
+
+  final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
+  bool _isLoading = true;
+  bool _isSubmitting = false;
+  List<Map<String, dynamic>> _gates = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _checklistItems = <Map<String, dynamic>>[];
+  List<String> _gateOptions = const ['Please Select One'];
   // ── step: 0 = Job Details, 1 = Checklist, 2 = Notes/Submit
   int _step = 0;
 
@@ -73,6 +99,266 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
     }
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _supervisorCtrl.text = _session.fullName;
+    _loadFormData();
+  }
+
+  @override
+  void dispose() {
+    _supervisorCtrl.dispose();
+    _driverCtrl.dispose();
+    _shipCtrl.dispose();
+    _otherFindingsCtrl.dispose();
+    _additionalCtrl.dispose();
+    _signatureController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFormData() async {
+    setState(() => _isLoading = true);
+    try {
+      final stationId = _session.activeStationId;
+      final results = await Future.wait([
+        _api.getLavSafetyChecklistItems(),
+        if (stationId.isNotEmpty) _api.getGates(stationId) else Future.value([]),
+      ]);
+
+      _checklistItems = List<Map<String, dynamic>>.from(results[0]);
+      _gates = List<Map<String, dynamic>>.from(results[1]);
+      _gateOptions = [
+        'Please Select One',
+        ..._gates.map((gate) => (gate['gateCode'] as String?) ?? 'Unknown Gate'),
+      ];
+    } catch (error) {
+      final message = error is ApiException
+          ? error.message
+          : 'Unable to load the LAV checklist right now.';
+      Get.snackbar(
+        'Load Failed',
+        message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _normalizeLabel(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  }
+
+  Map<String, dynamic>? _findChecklistItem(String label) {
+    final normalizedTarget = _normalizeLabel(label);
+    for (final item in _checklistItems) {
+      final itemLabel = (item['label'] as String?) ?? '';
+      if (_normalizeLabel(itemLabel) == normalizedTarget) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _selectedGateRecord() {
+    if (_selectedGate == 'Please Select One') {
+      return null;
+    }
+    for (final gate in _gates) {
+      if ((gate['gateCode'] as String?) == _selectedGate) {
+        return gate;
+      }
+    }
+    return null;
+  }
+
+  bool _validateStep0() {
+    if (_driverCtrl.text.trim().isEmpty || _shipCtrl.text.trim().isEmpty) {
+      Get.snackbar(
+        'Incomplete',
+        'Please complete the driver and ship details before continuing.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return false;
+    }
+
+    if (_selectedGateRecord() == null) {
+      Get.snackbar(
+        'Incomplete',
+        'Please select a gate before continuing.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _validateStep1() {
+    for (final key in _questionLabelsByKey.keys) {
+      if ((_selectedValues[key] ?? '').isEmpty) {
+        Get.snackbar(
+          'Incomplete',
+          'Please mark Pass or Fail for every checklist item.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<List<String>> _uploadFiles(List<File> files, String category) async {
+    final fileIds = <String>[];
+    for (final file in files) {
+      final uploaded = await _api.uploadFile(file, category: category);
+      final fileId = uploaded['id'] as String?;
+      if (fileId != null && fileId.isNotEmpty) {
+        fileIds.add(fileId);
+      }
+    }
+    return fileIds;
+  }
+
+  Future<String> _uploadSignature() async {
+    final bytes = await _signatureController.toPngBytes();
+    if (bytes == null || bytes.isEmpty) {
+      throw const ApiException('A signature is required before submission.');
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    final file = File(
+      '${tempDir.path}/lav-signature-${DateTime.now().millisecondsSinceEpoch}.png',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+
+    final uploaded = await _api.uploadFile(file, category: 'SIGNATURE');
+    final fileId = uploaded['id'] as String?;
+    if (fileId == null || fileId.isEmpty) {
+      throw const ApiException('Unable to upload the signature.');
+    }
+
+    return fileId;
+  }
+
+  String _buildAdditionalNotes() {
+    final supervisor = _supervisorCtrl.text.trim();
+    final notes = _additionalCtrl.text.trim();
+    if (supervisor.isEmpty) {
+      return notes;
+    }
+    if (notes.isEmpty) {
+      return 'Supervisor/Lead: $supervisor';
+    }
+    return 'Supervisor/Lead: $supervisor\n$notes';
+  }
+
+  Future<void> _submitReport() async {
+    if (_isSubmitting) {
+      return;
+    }
+    if (!_validateStep1()) {
+      return;
+    }
+    if (_selectedGateRecord() == null) {
+      Get.snackbar(
+        'Incomplete',
+        'Please return to the first step and select a gate.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final gate = _selectedGateRecord();
+      final signatureFileId = await _uploadSignature();
+      final generalPictureFileIds = await _uploadFiles(_step2Images, 'IMAGE');
+
+      final responses = <Map<String, dynamic>>[];
+      for (final entry in _questionLabelsByKey.entries) {
+        final checklistItem = _findChecklistItem(entry.value);
+        if (checklistItem == null) {
+          throw ApiException('Missing checklist mapping for "${entry.value}".');
+        }
+
+        final selectedValue = (_selectedValues[entry.key] ?? '').toUpperCase();
+        if (selectedValue.isEmpty) {
+          throw ApiException('Every checklist item must be marked.');
+        }
+
+        final imageFileIds = await _uploadFiles(
+          _uploadedImages[entry.key] ?? const <File>[],
+          'IMAGE',
+        );
+
+        responses.add({
+          'checklistItemId': checklistItem['id'],
+          'response': selectedValue == 'PASS' ? 'PASS' : 'FAIL',
+          'imageFileIds': imageFileIds,
+        });
+      }
+
+      await _api.createLavSafetyObservation({
+        'driverName': _driverCtrl.text.trim(),
+        'shipNumber': _shipCtrl.text.trim(),
+        'gateId': gate?['id'],
+        'responses': responses,
+        'signatureFileId': signatureFileId,
+        'otherFindings': _otherFindingsCtrl.text.trim(),
+        'additionalNotes': _buildAdditionalNotes(),
+        'generalPictureFileIds': generalPictureFileIds,
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      Get.snackbar(
+        "Success",
+        "LAV Safety Report Sent Successfully",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+      Get.off(() => const LavSafetyObservationScreen());
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Submission Failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Submission Failed',
+        'Unable to submit the LAV safety report right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
   // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -101,7 +387,9 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
       ),
       body: SafeArea(
         top: true,
-        child: _step == 0
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _step == 0
             ? _buildStep0()
             : _step == 1
             ? _buildStep1()
@@ -137,21 +425,25 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                   padding: const EdgeInsets.only(bottom: 4),
                   child: AppDropdown(
                     hint: "Please Select One",
-                    items: const [
-                      'Please Select One',
-                      'Gate A1',
-                      'Gate B2',
-                      'Gate C1',
-                      'Gate D2',
-                    ],
+                    items: _gateOptions,
                     value: _selectedGate,
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() => _selectedGate = value);
+                    },
                   ),
                 ),
               ],
             ),
           ),
         ),
-        _buildNextButton(() => setState(() => _step = 1)),
+        _buildNextButton(() {
+          if (_validateStep0()) {
+            setState(() => _step = 1);
+          }
+        }),
       ],
     );
   }
@@ -257,7 +549,11 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
             ),
           ),
         ),
-        _buildNextButton(() => setState(() => _step = 2)),
+        _buildNextButton(() {
+          if (_validateStep1()) {
+            setState(() => _step = 2);
+          }
+        }),
       ],
     );
   }
@@ -458,30 +754,30 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: () {
-                Get.snackbar(
-                  "Success",
-                  "LAV Safety Report Sent Successfully",
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.green,
-                  colorText: Colors.white,
-                );
-                Get.off(() => const LavSafetyObservationScreen());
-              },
+              onPressed: _isSubmitting ? null : _submitReport,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.mainAppColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(_inputRadius),
                 ),
               ),
-              child: const Text(
-                "Send Report",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      "Send Report",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
         ),

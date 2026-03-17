@@ -133,7 +133,7 @@ class _ResetPasswordSuccessScreenState extends State<ResetPasswordSuccessScreen>
 
                     // Subtitle
                     Text(
-                      'You can now login with your\nNew ID',
+                      'You can now sign in with your\nnew password',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.dmSans(
                         fontSize: 13.sp,

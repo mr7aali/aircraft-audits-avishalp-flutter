@@ -4,6 +4,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/app_api_service.dart';
+
 class _C {
   static const Color blue = Color(0xFF3D5AFE);
   static const Color ink = Color(0xFF0E0E10);
@@ -17,13 +19,39 @@ class NoEmailAccessScreen extends StatefulWidget {
 }
 
 class _NoEmailAccessScreenState extends State<NoEmailAccessScreen> {
+  final AppApiService _api = Get.find<AppApiService>();
+  String _message = 'Loading support guidance...';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessage();
+  }
+
+  Future<void> _loadMessage() async {
+    try {
+      final message = await _api.fetchNoEmailAccessMessage();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _message = message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message =
+            'Please contact your management for help accessing your registered email.';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4FF),
       body: Column(
         children: [
-          // ── Blue Hero ──────────────────────────────────
           ParallaxHeroWidget(
             bottomPadding: 220,
             child: Text(
@@ -37,8 +65,6 @@ class _NoEmailAccessScreenState extends State<NoEmailAccessScreen> {
               ),
             ),
           ),
-
-          // ── White Card ────────────────────────────────
           Expanded(
             child: SingleChildScrollView(
               child: Transform.translate(
@@ -60,9 +86,8 @@ class _NoEmailAccessScreenState extends State<NoEmailAccessScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Help message
                       Text(
-                        "Please contact your management...!!",
+                        _message,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.dmSans(
                           fontSize: 14.sp,
@@ -72,8 +97,6 @@ class _NoEmailAccessScreenState extends State<NoEmailAccessScreen> {
                         ),
                       ),
                       SizedBox(height: 24.h),
-
-                      // Back to Sign In button
                       GestureDetector(
                         onTap: () => Get.back(),
                         child: Text(
@@ -91,8 +114,6 @@ class _NoEmailAccessScreenState extends State<NoEmailAccessScreen> {
               ),
             ),
           ),
-
-          // Home indicator
           _buildHomeIndicator(),
         ],
       ),

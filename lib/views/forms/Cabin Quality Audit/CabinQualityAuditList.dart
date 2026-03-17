@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+import '../../../services/api_exception.dart';
+import '../../../services/app_api_service.dart';
 import 'CabinQualityAuditScreen.dart';
 
 // =====================
@@ -60,58 +64,91 @@ class CabinAuditItem {
 // CONTROLLER
 // =====================
 class CabinQualityAuditListController extends GetxController {
+  final AppApiService _api = Get.find<AppApiService>();
   final RxList<CabinAuditItem> audits = <CabinAuditItem>[].obs;
+  final RxBool isLoading = true.obs;
 
   @override
   void onInit() {
     super.onInit();
-    audits.assignAll([
-      CabinAuditItem(
-        id: '1',
-        observerName: 'Jane Cooper',
-        observerImage: 'assets/images/nirob.jpg',
-        date: 'Dec 15, 2024',
-        time: '2:30 PM',
-        gate: 'Gate A-12',
-        type: 'Charter',
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-      ),
-      CabinAuditItem(
-        id: '2',
-        observerName: 'Kristin Watson',
-        observerImage: 'assets/images/mursalin.jpg',
-        date: 'Dec 15, 2024',
-        time: '2:30 PM',
-        gate: 'Gate A-12',
-        type: 'MSGT Turn',
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-      ),
-      CabinAuditItem(
-        id: '3',
-        observerName: 'Theresa Webb',
-        observerImage: 'assets/images/nirob.jpg',
-        date: 'Dec 15, 2024',
-        time: '2:30 PM',
-        gate: 'Gate A-12',
-        type: 'Diversion',
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-      ),
-      CabinAuditItem(
-        id: '4',
-        observerName: 'Guy Hawkins',
-        observerImage: 'assets/images/nirob.jpg',
-        date: 'Dec 15, 2024',
-        time: '2:30 PM',
-        gate: 'Gate A-12',
-        type: 'RON – Remain Over Night',
-        locationImage: 'assets/images/indor.png',
-        locationImage2: 'assets/images/window.png',
-        bottomAvatarImage: 'assets/images/mursalin.jpg',
-      ),
-    ]);
+    loadAudits();
+  }
+
+  Future<void> loadAudits() async {
+    isLoading.value = true;
+
+    try {
+      final response = await _api.listCabinQualityAudits(
+        queryParameters: {
+          'page': 1,
+          'limit': 100,
+        },
+      );
+
+      final items = List<Map<String, dynamic>>.from(
+        (response['items'] as List?) ?? const <dynamic>[],
+      );
+
+      audits.assignAll(items.map(_mapAuditItem));
+    } on ApiException catch (error) {
+      audits.clear();
+      Get.snackbar(
+        'Audits Unavailable',
+        error.message,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      audits.clear();
+      Get.snackbar(
+        'Audits Unavailable',
+        'Unable to load cabin quality audits right now.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  CabinAuditItem _mapAuditItem(Map<String, dynamic> item) {
+    final auditAt = DateTime.tryParse(
+      item['auditAt']?.toString() ?? '',
+    )?.toLocal();
+    final thumbnails = List<dynamic>.from(item['thumbnails'] as List? ?? const []);
+    final thumbnailUrls = thumbnails
+        .map((entry) => entry.toString())
+        .where((entry) => entry.isNotEmpty)
+        .map(_api.buildFileContentUrl)
+        .toList();
+
+    return CabinAuditItem(
+      id: item['id']?.toString() ?? '',
+      observerName: (item['auditorName'] as String?)?.trim() ?? 'Unknown',
+      observerImage: 'assets/images/nirob.jpg',
+      date: auditAt == null ? '' : DateFormat('MMM d, y').format(auditAt),
+      time: auditAt == null ? '' : DateFormat('h:mm a').format(auditAt),
+      gate: _formatGateLabel(item['gateCode']?.toString() ?? ''),
+      type: (item['cleanType'] as String?)?.trim() ?? '',
+      locationImage: thumbnailUrls.isNotEmpty
+          ? thumbnailUrls.first
+          : 'assets/images/indor.png',
+      locationImage2: thumbnailUrls.length > 1
+          ? thumbnailUrls[1]
+          : 'assets/images/window.png',
+    );
+  }
+
+  String _formatGateLabel(String gateCode) {
+    final trimmed = gateCode.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    return trimmed.toLowerCase().startsWith('gate ')
+        ? trimmed
+        : 'Gate $trimmed';
   }
 }
 
@@ -257,8 +294,12 @@ class _CabinQualityAuditListScreenState
 
   // ── Audit List ───────────────────────────────────────────
   Widget _buildAuditList() {
-    return Obx(
-      () => ListView.separated(
+    return Obx(() {
+      if (controller.isLoading.value) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
+      return ListView.separated(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: controller.audits.length,
@@ -266,15 +307,15 @@ class _CabinQualityAuditListScreenState
         itemBuilder: (context, index) {
           return _buildAuditCard(controller.audits[index]);
         },
-      ),
-    );
+      );
+    });
   }
 
   // ── Audit Card ───────────────────────────────────────────
   Widget _buildAuditCard(CabinAuditItem item) {
     return InkWell(
       onTap: () {
-        Get.to(() => const CabinQualityAuditScreen());
+        Get.to(() => CabinQualityAuditScreen(auditId: item.id));
       },
       child: Container(
         color: _Colors.cardBg,
@@ -422,26 +463,41 @@ class _CabinQualityAuditListScreenState
 
   // ── Location Image ───────────────────────────────────────
   Widget _buildLocationImage(String imagePath) {
+    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8.r),
-      child: Image.asset(
-        imagePath,
-        width: 64.w,
-        height: 56.h,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: 64.w,
-          height: 56.h,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade200,
-            borderRadius: BorderRadius.circular(8.r),
-          ),
-          child: Icon(
-            Icons.image_outlined,
-            color: Colors.grey.shade400,
-            size: 22.sp,
-          ),
-        ),
+      child: imagePath.startsWith('http')
+          ? Image.network(
+              imagePath,
+              width: 64.w,
+              height: 56.h,
+              fit: BoxFit.cover,
+              headers: imageHeaders,
+              errorBuilder: (_, __, ___) => _buildMissingImage(),
+            )
+          : Image.asset(
+              imagePath,
+              width: 64.w,
+              height: 56.h,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildMissingImage(),
+            ),
+    );
+  }
+
+  Widget _buildMissingImage() {
+    return Container(
+      width: 64.w,
+      height: 56.h,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Icon(
+        Icons.image_outlined,
+        color: Colors.grey.shade400,
+        size: 22.sp,
       ),
     );
   }

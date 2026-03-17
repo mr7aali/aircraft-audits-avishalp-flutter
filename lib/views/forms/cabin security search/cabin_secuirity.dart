@@ -6,6 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:signature/signature.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../services/api_exception.dart';
+import '../../../services/app_api_service.dart';
+import '../../../services/session_service.dart';
 import 'CabinSecurityTrainingScreen.dart';
 
 // ─────────────────────────────────────────────
@@ -322,6 +325,7 @@ class CabinQualityController extends GetxController {
   final RxList<String> selectedAreas = <String>[].obs;
   final RxList<AreaCard> areaCards = <AreaCard>[].obs;
   final areaSearchCtrl = TextEditingController();
+  final RxList<String> availableAreas = <String>[].obs;
   final RxList<String> filteredAreas = <String>[].obs;
   final RxBool showAreaDropdown = false.obs;
 
@@ -394,7 +398,8 @@ class CabinQualityController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    filteredAreas.assignAll(kCabinAreas);
+    availableAreas.assignAll(kCabinAreas);
+    filteredAreas.assignAll(availableAreas);
     areaSearchCtrl.addListener(_onAreaSearch);
     _initAircraftMaps();
   }
@@ -403,8 +408,8 @@ class CabinQualityController extends GetxController {
     final q = areaSearchCtrl.text.toLowerCase();
     filteredAreas.assignAll(
       q.isEmpty
-          ? kCabinAreas
-          : kCabinAreas.where((a) => a.toLowerCase().contains(q)),
+          ? availableAreas
+          : availableAreas.where((a) => a.toLowerCase().contains(q)),
     );
   }
 
@@ -790,6 +795,8 @@ class CabinQualityAuditScreenN extends StatefulWidget {
 
 class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   final _ctrl = Get.put(CabinQualityController());
+  final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
   final _shipCtrl = TextEditingController();
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -804,6 +811,16 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   final RxList<File> _generalImages = <File>[].obs;
   final ImagePicker _picker = ImagePicker();
+  final Map<String, String> _gateIdsByLabel = <String, String>{};
+  final Map<String, String> _areaIdsByLabel = <String, String>{};
+  bool _isLoading = true;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFormData();
+  }
 
   // ── 100MB image validation ────────────────────────────
   Future<List<File>> _pickValidatedImages() async {
@@ -832,6 +849,98 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       );
     }
     return valid;
+  }
+
+  Future<void> _loadFormData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final stationId = _session.activeStationId;
+      if (stationId.isEmpty) {
+        throw Exception('No active station selected');
+      }
+
+      final results = await Future.wait([
+        _api.getGates(stationId),
+        _api.getSecuritySearchAreas(),
+      ]);
+
+      final gates = List<Map<String, dynamic>>.from(results[0]);
+      final areas = List<Map<String, dynamic>>.from(results[1]);
+
+      final gateLabels = <String>['Please Select One'];
+      _gateIdsByLabel.clear();
+      for (final gate in gates) {
+        final gateId = gate['id']?.toString() ?? '';
+        final gateCode = gate['gateCode']?.toString().trim() ?? '';
+        if (gateId.isEmpty || gateCode.isEmpty) {
+          continue;
+        }
+        final label = gateCode.toLowerCase().startsWith('gate ')
+            ? gateCode
+            : 'Gate $gateCode';
+        gateLabels.add(label);
+        _gateIdsByLabel[label] = gateId;
+      }
+
+      _areaIdsByLabel.clear();
+      final areaLabels = <String>[];
+      for (final area in areas) {
+        final areaId = area['id']?.toString() ?? '';
+        final label = area['label']?.toString().trim() ?? '';
+        if (areaId.isEmpty || label.isEmpty) {
+          continue;
+        }
+        areaLabels.add(label);
+        _areaIdsByLabel[label] = areaId;
+      }
+
+      _ctrl.gateOptions
+        ..clear()
+        ..addAll(gateLabels);
+      if (!_ctrl.gateOptions.contains(_ctrl.selectedGate.value)) {
+        _ctrl.selectedGate.value = 'Please Select One';
+      }
+
+      if (areaLabels.isNotEmpty) {
+        _ctrl.availableAreas
+          ..clear()
+          ..addAll(areaLabels);
+        _ctrl.filteredAreas.assignAll(areaLabels);
+      }
+
+      if (_session.fullName.isNotEmpty) {
+        _ctrl.supervisorName.value = _session.fullName;
+      } else if (_session.firstName.isNotEmpty) {
+        _ctrl.supervisorName.value = _session.firstName;
+      }
+
+      final roleName =
+          (_session.activeStation?['roleName'] as String?)?.trim() ?? '';
+      if (roleName.isNotEmpty) {
+        _ctrl.supervisorRole.value = roleName;
+      }
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Form Unavailable',
+        error.message,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Form Unavailable',
+        'Unable to load gate and area data right now.',
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _showAreaCardSheetForSeat(String id) async {
@@ -1041,6 +1150,14 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: _C.bg,
+        appBar: _buildAppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _C.bg,
       appBar: _buildAppBar(),
@@ -1773,6 +1890,52 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // ─────────────────────────────────────────────
   // SUBMIT BUTTON — success popup then navigate
   // ─────────────────────────────────────────────
+  Future<List<String>> _uploadImageFiles(List<File> files) async {
+    final uploadedIds = <String>[];
+
+    for (final file in files) {
+      final uploaded = await _api.uploadFile(file, category: 'IMAGE');
+      final fileId = uploaded['id']?.toString() ?? '';
+      if (fileId.isNotEmpty) {
+        uploadedIds.add(fileId);
+      }
+    }
+
+    return uploadedIds;
+  }
+
+  String? _buildSubmissionNotes() {
+    final userNotes = _ctrl.additionalNotesCtrl.text.trim();
+    final summary = _ctrl.areaCards
+        .map((card) {
+          final status = card.computedStatus == 'pass' ? 'PASS' : 'FAIL';
+          return '${card.areaName}=$status';
+        })
+        .join(', ');
+
+    final metadata = <String>[
+      if (_ctrl.selectedAircraft.value.trim().isNotEmpty)
+        'Aircraft: ${_ctrl.selectedAircraft.value.trim()}',
+      if (_ctrl.supervisorRole.value.trim().isNotEmpty)
+        'Supervisor Role: ${_ctrl.supervisorRole.value.trim()}',
+      if (summary.isNotEmpty) 'Area Summary: $summary',
+    ].join('\n');
+
+    final combined = [
+      if (userNotes.isNotEmpty) userNotes,
+      if (metadata.isNotEmpty) metadata,
+    ].join('\n\n');
+
+    if (combined.trim().isEmpty) {
+      return null;
+    }
+
+    const maxLength = 3000;
+    return combined.length <= maxLength
+        ? combined
+        : combined.substring(0, maxLength);
+  }
+
   Widget _buildSubmitButton() {
     return Obx(() {
       final valid = _ctrl.isFormValid;
@@ -1780,7 +1943,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         color: _C.white,
         padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
         child: GestureDetector(
-          onTap: () {
+          onTap: _isSubmitting ? null : () {
             if (!valid) {
               Get.snackbar(
                 'Incomplete Form',
@@ -1797,16 +1960,28 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           child: Container(
             height: 52.h,
             decoration: BoxDecoration(
-              color: valid ? _C.primary : _C.border,
+              color: valid && !_isSubmitting ? _C.primary : _C.border,
               borderRadius: BorderRadius.circular(30.r),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.send_rounded, color: Colors.white, size: 18.sp),
-                SizedBox(width: 10.w),
+                if (_isSubmitting) ...[
+                  SizedBox(
+                    width: 18.w,
+                    height: 18.h,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                ] else ...[
+                  Icon(Icons.send_rounded, color: Colors.white, size: 18.sp),
+                  SizedBox(width: 10.w),
+                ],
                 Text(
-                  'SEND AUDIT REPORT',
+                  _isSubmitting ? 'SUBMITTING...' : 'SEND AUDIT REPORT',
                   style: GoogleFonts.dmSans(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w700,
@@ -1825,174 +2000,208 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // ─────────────────────────────────────────────
   // HANDLE SUBMIT — show success dialog then go
   // ─────────────────────────────────────────────
-  void _handleSubmit() {
-    final now = DateTime.now();
-    final dateStr = '${_monthName(now.month)} ${now.day}, ${now.year}';
-    final timeStr =
-        '${_padTwo(now.hour)}:${_padTwo(now.minute)} ${now.hour < 12 ? 'AM' : 'PM'}';
+  Future<void> _handleSubmit() async {
+    if (_isSubmitting) {
+      return;
+    }
 
-    final newItem = TrainingItem(
-      id: now.millisecondsSinceEpoch.toString(),
-      observerName: _ctrl.supervisorName.value,
-      observerImage: 'assets/images/nirob.jpg',
-      date: dateStr,
-      time: timeStr,
-      dateTime: now,
-      gate: _ctrl.selectedGate.value,
-      shipNumber: _ctrl.shipNumber.value.trim(),
-      role: _ctrl.supervisorRole.value,
-      aircraft: _ctrl.selectedAircraft.value,
-      supervisorName: _ctrl.supervisorName.value,
-      supervisorRole: _ctrl.supervisorRole.value,
-      selectedAreas: List<String>.from(_ctrl.selectedAreas),
-      locationImage: _generalImages.isNotEmpty
-          ? _generalImages.first.path
-          : 'assets/images/indor.png',
-      locationImage2: _generalImages.length > 1
-          ? _generalImages[1].path
-          : 'assets/images/window.png',
-      isPassed: _ctrl.areaCards.every((c) => c.computedStatus == 'pass'),
-      areaResults: _ctrl.areaCards
-          .map(
-            (c) => CabinSecurityAreaResult(
-              area: c.areaName,
-              status: c.computedStatus.isEmpty ? 'fail' : c.computedStatus,
-              subItems: c.subItems
-                  .map(
-                    (s) => CabinSecuritySubItem(
-                      name: s.itemName,
-                      status: s.status,
-                    ),
-                  )
-                  .toList(),
-              pictures: c.images.map((f) => f.path).toList(),
+    final gateId = _gateIdsByLabel[_ctrl.selectedGate.value];
+    if (gateId == null || gateId.isEmpty) {
+      Get.snackbar(
+        'Gate Required',
+        'Please select a valid gate before submitting.',
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    final isPassed = _ctrl.areaCards.every((c) => c.computedStatus == 'pass');
+
+    try {
+      final generalPictureFileIds = await _uploadImageFiles(
+        _generalImages.toList(),
+      );
+
+      final areaResults = <Map<String, dynamic>>[];
+      for (final card in _ctrl.areaCards) {
+        final imageFileIds = await _uploadImageFiles([
+          ...card.images,
+          ...card.auditImages,
+        ]);
+
+        final areaPayload = <String, dynamic>{
+          'result': card.computedStatus == 'pass' ? 'PASS' : 'FAIL',
+          if (imageFileIds.isNotEmpty) 'imageFileIds': imageFileIds,
+        };
+
+        final knownAreaId = _areaIdsByLabel[card.areaName];
+        if (knownAreaId != null && knownAreaId.isNotEmpty) {
+          areaPayload['areaId'] = knownAreaId;
+        } else {
+          areaPayload['areaLabel'] = card.areaName;
+        }
+
+        areaResults.add(areaPayload);
+      }
+
+      await _api.createCabinSecurityTraining({
+        'shipNumber': _ctrl.shipNumber.value.trim(),
+        'gateId': gateId,
+        'areaResults': areaResults,
+        if (_ctrl.otherFindingsCtrl.text.trim().isNotEmpty)
+          'otherFindings': _ctrl.otherFindingsCtrl.text.trim(),
+        if (_buildSubmissionNotes() != null)
+          'additionalNotes': _buildSubmissionNotes(),
+        if (generalPictureFileIds.isNotEmpty)
+          'generalPictureFileIds': generalPictureFileIds,
+      });
+
+      if (Get.isRegistered<CabinSecurityController>()) {
+        await Get.find<CabinSecurityController>().loadTrainings();
+      }
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(horizontal: 32.w),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
+            decoration: BoxDecoration(
+              color: _C.white,
+              borderRadius: BorderRadius.circular(24.r),
             ),
-          )
-          .toList(),
-      otherFindings: _ctrl.otherFindingsCtrl.text.trim(),
-      additionalNotes: _ctrl.additionalNotesCtrl.text.trim(),
-    );
-
-    // Show success popup
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.symmetric(horizontal: 32.w),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
-          decoration: BoxDecoration(
-            color: _C.white,
-            borderRadius: BorderRadius.circular(24.r),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Animated success icon container
-              Container(
-                width: 80.w,
-                height: 80.w,
-                decoration: BoxDecoration(
-                  color: _C.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.check_circle_rounded,
-                  color: _C.green,
-                  size: 48.sp,
-                ),
-              ),
-              SizedBox(height: 20.h),
-              Text(
-                'Report Submitted!',
-                style: GoogleFonts.dmSans(
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.w700,
-                  color: _C.dark,
-                ),
-              ),
-              SizedBox(height: 10.h),
-              Text(
-                'Your cabin security audit report has been submitted successfully.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(
-                  fontSize: 13.sp,
-                  color: _C.grey,
-                  height: 1.5,
-                ),
-              ),
-              SizedBox(height: 8.h),
-              // Summary row
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                decoration: BoxDecoration(
-                  color: _C.bg,
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                child: Column(
-                  children: [
-                    _summaryRow(
-                      Icons.local_airport_rounded,
-                      'Gate',
-                      _ctrl.selectedGate.value,
-                    ),
-                    SizedBox(height: 6.h),
-                    _summaryRow(
-                      Icons.tag_rounded,
-                      'Ship #',
-                      _ctrl.shipNumber.value.trim(),
-                    ),
-                    SizedBox(height: 6.h),
-                    _summaryRow(
-                      Icons.location_on_rounded,
-                      'Areas',
-                      '${_ctrl.areaCards.length} inspected',
-                    ),
-                    SizedBox(height: 6.h),
-                    _summaryRow(
-                      Icons.bar_chart_rounded,
-                      'Result',
-                      newItem.isPassed ? 'All Passed ✓' : 'Some Failed ✗',
-                      valueColor: newItem.isPassed ? _C.green : _C.red,
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 24.h),
-              // Done button
-              GestureDetector(
-                onTap: () {
-                  // Close dialog first
-                  Navigator.of(context).pop();
-                  // Navigate back to CabinSecurityTrainingScreen with result
-                  Get.back(result: newItem);
-                },
-                child: Container(
-                  width: double.infinity,
-                  height: 50.h,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 80.w,
+                  height: 80.w,
                   decoration: BoxDecoration(
-                    color: _C.primary,
-                    borderRadius: BorderRadius.circular(30.r),
+                    color: _C.green.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
                   ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Done',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: _C.green,
+                    size: 48.sp,
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                Text(
+                  'Report Submitted!',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _C.dark,
+                  ),
+                ),
+                SizedBox(height: 10.h),
+                Text(
+                  'Your cabin security audit report has been submitted successfully.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13.sp,
+                    color: _C.grey,
+                    height: 1.5,
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                  decoration: BoxDecoration(
+                    color: _C.bg,
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: Column(
+                    children: [
+                      _summaryRow(
+                        Icons.local_airport_rounded,
+                        'Gate',
+                        _ctrl.selectedGate.value,
+                      ),
+                      SizedBox(height: 6.h),
+                      _summaryRow(
+                        Icons.tag_rounded,
+                        'Ship #',
+                        _ctrl.shipNumber.value.trim(),
+                      ),
+                      SizedBox(height: 6.h),
+                      _summaryRow(
+                        Icons.location_on_rounded,
+                        'Areas',
+                        '${_ctrl.areaCards.length} inspected',
+                      ),
+                      SizedBox(height: 6.h),
+                      _summaryRow(
+                        Icons.bar_chart_rounded,
+                        'Result',
+                        isPassed ? 'All Passed' : 'Some Failed',
+                        valueColor: isPassed ? _C.green : _C.red,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Get.back();
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 50.h,
+                    decoration: BoxDecoration(
+                      color: _C.primary,
+                      borderRadius: BorderRadius.circular(30.r),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Done',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+      return;
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Submission Failed',
+        error.message,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      return;
+    } catch (_) {
+      Get.snackbar(
+        'Submission Failed',
+        'Unable to submit this cabin security report right now.',
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      return;
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+
   }
 
   Widget _summaryRow(
@@ -2515,60 +2724,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // ─────────────────────────────────────────────
   // SHARED HELPERS
   // ─────────────────────────────────────────────
-  String _monthName(int m) => const [
-    '',
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ][m];
-
-  String _padTwo(int v) => v.toString().padLeft(2, '0');
-
-  Widget _buildStatusButton({
-    required String label,
-    required IconData? icon,
-    required bool isSelected,
-    required Color color,
-    required VoidCallback onTap,
-  }) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      height: 44.h,
-      decoration: BoxDecoration(
-        color: isSelected ? color : _C.white,
-        borderRadius: BorderRadius.circular(22.r),
-        border: Border.all(color: isSelected ? color : _C.border, width: 1.5),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 18.sp, color: isSelected ? Colors.white : _C.grey),
-            SizedBox(width: 5.w),
-          ],
-          Text(
-            label,
-            style: GoogleFonts.dmSans(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w600,
-              color: isSelected ? Colors.white : _C.grey,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
   Widget _label(String t) => Padding(
     padding: EdgeInsets.only(bottom: 8.h),
     child: Text(

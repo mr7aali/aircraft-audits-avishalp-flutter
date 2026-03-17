@@ -1,6 +1,11 @@
+import 'package:avislap/views/dashboard/dashboard_screen.dart';
+import 'package:avislap/views/select_station/select_station.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../services/session_service.dart';
 import 'login_screen.dart';
 
 class _C {
@@ -36,36 +41,53 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _exitOpacity;
   late Animation<double> _exitScale;
 
+  final SessionService _sessionService = Get.find<SessionService>();
+
   @override
   void initState() {
     super.initState();
 
     _logoCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1000));
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
     _logoOpacity = Tween<double>(begin: 0, end: 1).animate(_logoCtrl);
     _logoSlide = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
         .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutExpo));
 
     _bar1Ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _bar2Ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _bar3Ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _bar1Scale = Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: _bar1Ctrl, curve: Curves.easeOutExpo));
+      CurvedAnimation(parent: _bar1Ctrl, curve: Curves.easeOutExpo),
+    );
     _bar2Scale = Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: _bar2Ctrl, curve: Curves.easeOutExpo));
+      CurvedAnimation(parent: _bar2Ctrl, curve: Curves.easeOutExpo),
+    );
     _bar3Scale = Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: _bar3Ctrl, curve: Curves.easeOutExpo));
+      CurvedAnimation(parent: _bar3Ctrl, curve: Curves.easeOutExpo),
+    );
 
     _wordCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     _wordSlide = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
         .animate(CurvedAnimation(parent: _wordCtrl, curve: Curves.easeOutExpo));
 
     _exitCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 550));
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    );
     _exitOpacity = Tween<double>(begin: 1, end: 0).animate(_exitCtrl);
     _exitScale = Tween<double>(begin: 1, end: 1.03).animate(_exitCtrl);
 
@@ -85,14 +107,24 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 1400));
     _exitCtrl.forward();
     await Future.delayed(const Duration(milliseconds: 520));
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const LoginScreen(),
-          transitionDuration: Duration.zero,
-        ),
-      );
+
+    if (!mounted) {
+      return;
     }
+
+    if (_sessionService.isLoggedIn) {
+      if (_sessionService.activeStationId.isNotEmpty) {
+        Get.offAll(() => const DashboardScreen());
+        return;
+      }
+
+      Get.offAll(
+        () => StationSelectionScreen(userName: _sessionService.firstName),
+      );
+      return;
+    }
+
+    Get.offAll(() => const LoginScreen());
   }
 
   @override
@@ -175,7 +207,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget _buildBar(Animation<double> scale, double height, double opacity) {
     return AnimatedBuilder(
       animation: scale,
-      builder: (_, __) => Align(
+      builder: (_, child) => Align(
         alignment: Alignment.bottomCenter,
         child: Transform.scale(
           scaleY: scale.value,

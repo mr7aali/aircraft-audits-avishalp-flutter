@@ -5,6 +5,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/api_exception.dart';
+import '../../services/app_api_service.dart';
+
 class _C {
   static const Color blue = Color(0xFF3D5AFE);
   static const Color ink = Color(0xFF0E0E10);
@@ -21,11 +24,61 @@ class ForgotIdScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
   final _emailCtrl = TextEditingController();
+  final AppApiService _api = Get.find<AppApiService>();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      Get.snackbar(
+        'Email Required',
+        'Please enter your email address.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    if (_isSubmitting) {
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      await _api.requestForgotUid(email);
+      if (!mounted) {
+        return;
+      }
+      Get.to(() => const OtpIdVerificationScreen());
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Request Failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Request Failed',
+        'Unable to start user ID recovery right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -34,7 +87,6 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
       backgroundColor: const Color(0xFFF0F4FF),
       body: Column(
         children: [
-          // ── Blue Hero ──────────────────────────────────
           ParallaxHeroWidget(
             bottomPadding: 200,
             child: Text(
@@ -48,8 +100,6 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
               ),
             ),
           ),
-
-          // ── White Card ────────────────────────────────
           Expanded(
             child: SingleChildScrollView(
               child: Transform.translate(
@@ -71,7 +121,6 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Subtitle
                       Text(
                         "Enter your email address and we'll send\nyour a link to reset your ID",
                         textAlign: TextAlign.center,
@@ -82,8 +131,6 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
                         ),
                       ),
                       SizedBox(height: 20.h),
-
-                      // Email label
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -96,8 +143,6 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
                         ),
                       ),
                       SizedBox(height: 6.h),
-
-                      // Email input
                       Container(
                         height: 52.h,
                         decoration: BoxDecoration(
@@ -108,8 +153,11 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
                         child: TextField(
                           controller: _emailCtrl,
                           keyboardType: TextInputType.emailAddress,
+                          enabled: !_isSubmitting,
                           style: GoogleFonts.dmSans(
-                              fontSize: 15.sp, color: _C.ink),
+                            fontSize: 15.sp,
+                            color: _C.ink,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'Enter your email',
                             hintStyle: GoogleFonts.dmSans(
@@ -118,18 +166,13 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
                             ),
                             border: InputBorder.none,
                             contentPadding:
-                            EdgeInsets.symmetric(horizontal: 20.w),
+                                EdgeInsets.symmetric(horizontal: 20.w),
                           ),
                         ),
                       ),
                       SizedBox(height: 24.h),
-
-                      // Send Reset Link button
                       GestureDetector(
-                        onTap: () {
-                          // send reset link logic
-                          Get.to(() => const OtpIdVerificationScreen());
-                        },
+                        onTap: _isSubmitting ? null : _submit,
                         child: Container(
                           height: 54.h,
                           width: double.infinity,
@@ -138,20 +181,30 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
                             borderRadius: BorderRadius.circular(30.r),
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            'SEND RESET LINK',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
+                          child: _isSubmitting
+                              ? SizedBox(
+                                  width: 22.w,
+                                  height: 22.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    valueColor:
+                                        AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'SEND RESET LINK',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
                         ),
                       ),
                       SizedBox(height: 16.h),
-
-                      // Back to Sign In
                       GestureDetector(
                         onTap: () => Get.back(),
                         child: Text(
@@ -169,8 +222,6 @@ class _ForgotPasswordScreenState extends State<ForgotIdScreen> {
               ),
             ),
           ),
-
-          // Home indicator
           _buildHomeIndicator(),
         ],
       ),

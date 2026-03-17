@@ -6,7 +6,12 @@ import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:signature/signature.dart';
+
+import '../../../services/api_exception.dart';
+import '../../../services/app_api_service.dart';
+import '../../../services/session_service.dart';
 
 // ─────────────────────────────────────────────
 // COLORS
@@ -18,7 +23,6 @@ class _C {
   static const Color dark = Color(0xFF1A1A2E);
   static const Color grey = Color(0xFF8891A4);
   static const Color border = Color(0xFFE4E7EF);
-  static const Color inputBg = Color(0xFFF9FAFB);
   static const Color seatColor = Color(0xFF6B7B99);
   static const Color green = Color(0xFF22C55E);
   static const Color red = Color(0xFFEF4444);
@@ -464,13 +468,22 @@ class CabinAuditScreen extends StatefulWidget {
 
 class _CabinAuditScreenState extends State<CabinAuditScreen> {
   final _ctrl = Get.put(CabinAudit());
+  final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
   final _supervisorCtrl = TextEditingController();
+  final _otherFindingsCtrl = TextEditingController();
+  final _additionalNotesCtrl = TextEditingController();
 
   // Steps: 0 = Job Details, 1 = Seat Map, 2 = Notes
   int _step = 0;
 
   final RxList<File> _selectedImages = <File>[].obs;
   final ImagePicker _picker = ImagePicker();
+  final Map<String, String> _gateIdsByLabel = <String, String>{};
+  final Map<String, String> _cleanTypeIdsByLabel = <String, String>{};
+  final Map<String, String> _checklistIdsByLabel = <String, String>{};
+  bool _isLoading = true;
+  bool _isSubmitting = false;
 
   final SignatureController signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -492,7 +505,120 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _loadFormData();
+  }
+
+  @override
+  void dispose() {
+    _supervisorCtrl.dispose();
+    _otherFindingsCtrl.dispose();
+    _additionalNotesCtrl.dispose();
+    signatureController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFormData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final stationId = _session.activeStationId;
+      if (stationId.isEmpty) {
+        throw Exception('No active station selected');
+      }
+
+      final results = await Future.wait([
+        _api.getGates(stationId),
+        _api.getCleanTypes(),
+        _api.getCabinQualityChecklistItems(),
+      ]);
+
+      final gates = List<Map<String, dynamic>>.from(results[0]);
+      final cleanTypes = List<Map<String, dynamic>>.from(results[1]);
+      final checklist = List<Map<String, dynamic>>.from(results[2]);
+
+      _gateIdsByLabel.clear();
+      _ctrl.gateOptions.clear();
+      for (final gate in gates) {
+        final gateId = gate['id']?.toString() ?? '';
+        final gateCode = gate['gateCode']?.toString().trim() ?? '';
+        if (gateId.isEmpty || gateCode.isEmpty) {
+          continue;
+        }
+        final label = gateCode.toLowerCase().startsWith('gate ')
+            ? gateCode
+            : 'Gate $gateCode';
+        _gateIdsByLabel[label] = gateId;
+        _ctrl.gateOptions.add(label);
+      }
+      if (_ctrl.gateOptions.isNotEmpty) {
+        _ctrl.selectedGate.value = _ctrl.gateOptions.first;
+      }
+
+      _cleanTypeIdsByLabel.clear();
+      _ctrl.cleanTypeOptions.clear();
+      for (final cleanType in cleanTypes) {
+        final cleanTypeId = cleanType['id']?.toString() ?? '';
+        final name = cleanType['name']?.toString().trim() ?? '';
+        if (cleanTypeId.isEmpty || name.isEmpty) {
+          continue;
+        }
+        _cleanTypeIdsByLabel[name] = cleanTypeId;
+        _ctrl.cleanTypeOptions.add(name);
+      }
+      if (_ctrl.cleanTypeOptions.isNotEmpty) {
+        _ctrl.selectedCleanType.value = _ctrl.cleanTypeOptions.first;
+      }
+
+      _checklistIdsByLabel.clear();
+      for (final item in checklist) {
+        final checklistId = item['id']?.toString() ?? '';
+        final label = item['label']?.toString().trim() ?? '';
+        if (checklistId.isEmpty || label.isEmpty) {
+          continue;
+        }
+        _checklistIdsByLabel[label] = checklistId;
+      }
+
+      if (_session.fullName.isNotEmpty) {
+        _supervisorCtrl.text = _session.fullName;
+      } else if (_session.firstName.isNotEmpty) {
+        _supervisorCtrl.text = _session.firstName;
+      }
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Form Unavailable',
+        error.message,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Form Unavailable',
+        'Unable to load gate and checklist data right now.',
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: _C.bg,
+        appBar: _buildAppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _C.bg,
       appBar: _buildAppBar(),
@@ -666,10 +792,16 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _label('Other Findings'),
-                _multilineField('Enter any additional findings or notes...'),
+                _multilineField(
+                  'Enter any additional findings or notes...',
+                  controller: _otherFindingsCtrl,
+                ),
                 SizedBox(height: 16.h),
                 _label('Additional Notes'),
-                _multilineField('Enter any additional findings or notes...'),
+                _multilineField(
+                  'Enter any additional findings or notes...',
+                  controller: _additionalNotesCtrl,
+                ),
                 SizedBox(height: 16.h),
                 _label('Pictures'),
                 _uploadBox(),
@@ -2043,7 +2175,11 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     ),
   );
 
-  Widget _multilineField(String hint) => TextField(
+  Widget _multilineField(
+    String hint, {
+    TextEditingController? controller,
+  }) => TextField(
+    controller: controller,
     maxLines: 4,
     style: _fieldStyle(),
     decoration: InputDecoration(
@@ -2090,6 +2226,241 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     ),
   );
 
+  Future<List<String>> _uploadFiles(List<File> files) async {
+    final fileIds = <String>[];
+    for (final file in files) {
+      final uploaded = await _api.uploadFile(file, category: 'IMAGE');
+      final fileId = uploaded['id'] as String?;
+      if (fileId != null && fileId.isNotEmpty) {
+        fileIds.add(fileId);
+      }
+    }
+    return fileIds;
+  }
+
+  Future<String> _uploadSignature() async {
+    final bytes = await signatureController.toPngBytes();
+    if (bytes == null || bytes.isEmpty) {
+      throw const ApiException('A signature is required before submission.');
+    }
+
+    final tempDir = await getTemporaryDirectory();
+    final file = File(
+      '${tempDir.path}/cabin-quality-signature-${DateTime.now().millisecondsSinceEpoch}.png',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+
+    final uploaded = await _api.uploadFile(file, category: 'SIGNATURE');
+    final fileId = uploaded['id'] as String?;
+    if (fileId == null || fileId.isEmpty) {
+      throw const ApiException('Unable to upload the signature.');
+    }
+
+    return fileId;
+  }
+
+  String _normalizeLabel(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  }
+
+  String _responseFromStatuses(Iterable<String> statuses) {
+    final normalized = statuses
+        .map((status) => status.trim().toLowerCase())
+        .where((status) => status.isNotEmpty && status != 'na')
+        .toList();
+
+    if (normalized.any((status) => status == 'fail')) {
+      return 'NO';
+    }
+    if (normalized.any((status) => status == 'pass')) {
+      return 'YES';
+    }
+    return 'NA';
+  }
+
+  bool _seatMatchesLabel(String seatId, String checklistLabel) {
+    final normalizedSeat = seatId.toLowerCase();
+    final section = _ctrl.getSectionForSeat(seatId);
+
+    switch (_normalizeLabel(checklistLabel)) {
+      case 'firstclass':
+        return section == 'first_class';
+      case 'frontgalley':
+        return normalizedSeat.contains('galley fwd');
+      case 'backgalley':
+        return normalizedSeat.contains('galley aft') ||
+            (normalizedSeat.contains('galley') &&
+                !normalizedSeat.contains('fwd'));
+      case 'frontlavs':
+        return normalizedSeat.contains('lav fwd');
+      case 'midlavs':
+        return normalizedSeat.contains('lav mid');
+      case 'aftlavs':
+        return normalizedSeat.contains('lav aft') ||
+            normalizedSeat == 'lav l' ||
+            normalizedSeat == 'lav r';
+      default:
+        return false;
+    }
+  }
+
+  bool _itemMatchesLabel(String itemName, String checklistLabel) {
+    final normalizedItem = _normalizeLabel(itemName);
+    switch (_normalizeLabel(checklistLabel)) {
+      case 'floorcarpets':
+        return normalizedItem.contains('floor');
+      case 'seatbacktrash':
+        return normalizedItem == 'seatbacktrash' ||
+            normalizedItem == 'seatpocket';
+      case 'traytables':
+        return normalizedItem.contains('traytable');
+      case 'ifescreens':
+        return normalizedItem.contains('ifescreen') ||
+            normalizedItem.contains('ifeunit');
+      default:
+        return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _buildChecklistResponses() async {
+    final responses = <Map<String, dynamic>>[];
+
+    for (final entry in _checklistIdsByLabel.entries) {
+      final checklistLabel = entry.key;
+      final matchedEntries = _ctrl.checkItemStatuses.entries.where((statusEntry) {
+        final separatorIndex = statusEntry.key.indexOf('|');
+        if (separatorIndex < 0) {
+          return false;
+        }
+
+        final seatId = statusEntry.key.substring(0, separatorIndex);
+        final itemName = statusEntry.key.substring(separatorIndex + 1);
+
+        return _seatMatchesLabel(seatId, checklistLabel) ||
+            _itemMatchesLabel(itemName, checklistLabel);
+      }).toList();
+
+      final imageFiles = <File>[];
+      for (final matched in matchedEntries) {
+        final files = _ctrl.checkItemImages[matched.key];
+        if (files != null) {
+          imageFiles.addAll(files);
+        }
+      }
+
+      responses.add({
+        'checklistItemId': entry.value,
+        'response': _responseFromStatuses(
+          matchedEntries.map((matched) => matched.value),
+        ),
+        'imageFileIds': await _uploadFiles(imageFiles),
+      });
+    }
+
+    return responses;
+  }
+
+  String _buildAdditionalNotes() {
+    final notes = _additionalNotesCtrl.text.trim();
+    final metadata = <String>[
+      if (_ctrl.selectedAircraft.value.trim().isNotEmpty)
+        'Aircraft: ${_ctrl.selectedAircraft.value.trim()}',
+      if (_supervisorCtrl.text.trim().isNotEmpty)
+        'Supervisor/Lead: ${_supervisorCtrl.text.trim()}',
+    ].join('\n');
+
+    final combined = [
+      if (notes.isNotEmpty) notes,
+      if (metadata.isNotEmpty) metadata,
+    ].join('\n\n');
+
+    return combined;
+  }
+
+  Future<void> _submitReport() async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    final gateId = _gateIdsByLabel[_ctrl.selectedGate.value];
+    final cleanTypeId = _cleanTypeIdsByLabel[_ctrl.selectedCleanType.value];
+    if (gateId == null || gateId.isEmpty) {
+      Get.snackbar(
+        'Incomplete',
+        'Please select a valid gate before submitting.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+    if (cleanTypeId == null || cleanTypeId.isEmpty) {
+      Get.snackbar(
+        'Incomplete',
+        'Please select a clean type before submitting.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final signatureFileId = await _uploadSignature();
+      final generalPictureFileIds = await _uploadFiles(_selectedImages.toList());
+      final responses = await _buildChecklistResponses();
+
+      await _api.createCabinQualityAudit({
+        'gateId': gateId,
+        'cleanTypeId': cleanTypeId,
+        'responses': responses,
+        'signatureFileId': signatureFileId,
+        'otherFindings': _otherFindingsCtrl.text.trim(),
+        'additionalNotes': _buildAdditionalNotes(),
+        'generalPictureFileIds': generalPictureFileIds,
+      });
+
+      if (Get.isRegistered<CabinQualityAuditListController>()) {
+        await Get.find<CabinQualityAuditListController>().loadAudits();
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      Get.snackbar(
+        'Success',
+        'Audit report submitted!',
+        backgroundColor: _C.green,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      Get.off(() => const CabinQualityAuditListScreen());
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Submission Failed',
+        error.message,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } catch (_) {
+      Get.snackbar(
+        'Submission Failed',
+        'Unable to submit the cabin quality audit right now.',
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
   Widget _nextButton(VoidCallback onTap) => Container(
     color: _C.white,
     padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
@@ -2119,29 +2490,32 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     color: _C.white,
     padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
     child: GestureDetector(
-      onTap: () {
-        Get.snackbar(
-          'Success',
-          'Audit report submitted!',
-          backgroundColor: _C.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.TOP,
-        );
-        Get.off(() => const CabinQualityAuditListScreen());
-      },
+      onTap: _isSubmitting ? null : _submitReport,
       child: Container(
         height: 52.h,
         decoration: BoxDecoration(
-          color: _C.primary,
+          color: _isSubmitting ? _C.border : _C.primary,
           borderRadius: BorderRadius.circular(30.r),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.send_rounded, color: Colors.white, size: 18.sp),
-            SizedBox(width: 10.w),
+            if (_isSubmitting) ...[
+              SizedBox(
+                width: 18.w,
+                height: 18.h,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 10.w),
+            ] else ...[
+              Icon(Icons.send_rounded, color: Colors.white, size: 18.sp),
+              SizedBox(width: 10.w),
+            ],
             Text(
-              'SEND AUDIT REPORT',
+              _isSubmitting ? 'SUBMITTING...' : 'SEND AUDIT REPORT',
               style: GoogleFonts.dmSans(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w700,
