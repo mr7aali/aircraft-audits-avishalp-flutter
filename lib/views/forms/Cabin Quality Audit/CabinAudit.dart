@@ -2322,7 +2322,20 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _buildChecklistResponses() async {
+  Future<Map<String, List<String>>> _uploadCheckItemImageIds() async {
+    final uploadedByKey = <String, List<String>>{};
+
+    for (final entry in _ctrl.checkItemImages.entries) {
+      final files = entry.value.toList();
+      uploadedByKey[entry.key] = files.isEmpty ? const [] : await _uploadFiles(files);
+    }
+
+    return uploadedByKey;
+  }
+
+  Future<List<Map<String, dynamic>>> _buildChecklistResponses(
+    Map<String, List<String>> uploadedImageIdsByKey,
+  ) async {
     final responses = <Map<String, dynamic>>[];
 
     for (final entry in _checklistIdsByLabel.entries) {
@@ -2340,12 +2353,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
             _itemMatchesLabel(itemName, checklistLabel);
       }).toList();
 
-      final imageFiles = <File>[];
+      final imageFileIds = <String>[];
       for (final matched in matchedEntries) {
-        final files = _ctrl.checkItemImages[matched.key];
-        if (files != null) {
-          imageFiles.addAll(files);
-        }
+        imageFileIds.addAll(uploadedImageIdsByKey[matched.key] ?? const []);
       }
 
       responses.add({
@@ -2353,11 +2363,46 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
         'response': _responseFromStatuses(
           matchedEntries.map((matched) => matched.value),
         ),
-        'imageFileIds': await _uploadFiles(imageFiles),
+        'imageFileIds': imageFileIds,
       });
     }
 
     return responses;
+  }
+
+  List<Map<String, dynamic>> _buildDetailedAreaResults(
+    Map<String, List<String>> uploadedImageIdsByKey,
+  ) {
+    final areaIds = _ctrl.auditedSeats.keys.toList()..sort();
+    final areaResults = <Map<String, dynamic>>[];
+
+    for (final areaId in areaIds) {
+      final checkItems = _ctrl.getCheckItemsForSeat(areaId);
+      final detailedItems = <Map<String, dynamic>>[];
+
+      for (final itemName in checkItems) {
+        final key = '$areaId|$itemName';
+        final status = _ctrl.getCheckItem(areaId, itemName);
+
+        detailedItems.add({
+          'itemName': itemName,
+          'status': status,
+          'imageFileIds': uploadedImageIdsByKey[key] ?? const <String>[],
+          'hashtags': (_ctrl.checkItemTags[key] ?? <String>[].obs)
+              .map((tag) => tag.trim())
+              .where((tag) => tag.isNotEmpty)
+              .toList(),
+        });
+      }
+
+      areaResults.add({
+        'areaId': areaId,
+        'sectionLabel': _ctrl.getSectionLabel(areaId),
+        'checkItems': detailedItems,
+      });
+    }
+
+    return areaResults;
   }
 
   String _buildAdditionalNotes() {
@@ -2410,12 +2455,15 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     try {
       final signatureFileId = await _uploadSignature();
       final generalPictureFileIds = await _uploadFiles(_selectedImages.toList());
-      final responses = await _buildChecklistResponses();
+      final uploadedImageIdsByKey = await _uploadCheckItemImageIds();
+      final responses = await _buildChecklistResponses(uploadedImageIdsByKey);
+      final areaResults = _buildDetailedAreaResults(uploadedImageIdsByKey);
 
       await _api.createCabinQualityAudit({
         'gateId': gateId,
         'cleanTypeId': cleanTypeId,
         'responses': responses,
+        'areaResults': areaResults,
         'signatureFileId': signatureFileId,
         'otherFindings': _otherFindingsCtrl.text.trim(),
         'additionalNotes': _buildAdditionalNotes(),

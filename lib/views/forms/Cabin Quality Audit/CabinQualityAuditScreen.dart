@@ -7,9 +7,6 @@ import 'package:intl/intl.dart';
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
 
-// =====================
-// COLORS
-// =====================
 class _Colors {
   static const Color primary = Color(0xFF3D5AFE);
   static const Color background = Color(0xFFF5F6FA);
@@ -23,9 +20,6 @@ class _Colors {
   static const Color highlightBg = Color(0xFFEEF2FF);
 }
 
-// =====================
-// ENUMS & EXTENSIONS
-// =====================
 enum AuditStatus { pass, fail, na }
 
 extension AuditStatusExt on AuditStatus {
@@ -63,27 +57,29 @@ extension AuditStatusExt on AuditStatus {
   }
 }
 
-// =====================
-// MODELS
-// =====================
 class CheckItemResult {
   final String itemName;
   final AuditStatus status;
+  final List<String> pictures;
+  final List<String> hashtags;
 
-  CheckItemResult({required this.itemName, required this.status});
+  CheckItemResult({
+    required this.itemName,
+    required this.status,
+    this.pictures = const <String>[],
+    this.hashtags = const <String>[],
+  });
 }
 
 class AuditedAreaResult {
   final String areaId;
   final String sectionLabel;
   final List<CheckItemResult> checkItems;
-  final List<String>? pictures;
 
   AuditedAreaResult({
     required this.areaId,
     required this.sectionLabel,
     required this.checkItems,
-    this.pictures,
   });
 
   AuditStatus get overallStatus {
@@ -102,15 +98,22 @@ class AuditedAreaResult {
       checkItems.where((c) => c.status == AuditStatus.fail).length;
   int get naCount => checkItems.where((c) => c.status == AuditStatus.na).length;
 
-  /// Per-area score: N/A items are excluded from calculation
   double get scorePercent {
     final applicable = checkItems
         .where((c) => c.status != AuditStatus.na)
         .toList();
-    if (applicable.isEmpty) return 0;
+    if (applicable.isEmpty) {
+      return 0;
+    }
     final passed = applicable.where((c) => c.status == AuditStatus.pass).length;
     return (passed / applicable.length) * 100;
   }
+
+  List<String> get pictures => checkItems
+      .expand((item) => item.pictures)
+      .where((picture) => picture.trim().isNotEmpty)
+      .toSet()
+      .toList();
 }
 
 class CabinAuditDetailModel {
@@ -119,7 +122,8 @@ class CabinAuditDetailModel {
   final String time;
   final String gate;
   final String type;
-  final String tailNumber;
+  final String aircraft;
+  final String supervisor;
   final List<AuditedAreaResult> auditedAreas;
   final List<String> pictures;
   final String? notes;
@@ -130,11 +134,24 @@ class CabinAuditDetailModel {
     required this.time,
     required this.gate,
     required this.type,
-    required this.tailNumber,
+    required this.aircraft,
+    required this.supervisor,
     required this.auditedAreas,
     required this.pictures,
     this.notes,
   });
+
+  factory CabinAuditDetailModel.empty() => CabinAuditDetailModel(
+        auditorName: 'Cabin Quality Audit',
+        date: '',
+        time: '',
+        gate: '',
+        type: '',
+        aircraft: '',
+        supervisor: '',
+        auditedAreas: const <AuditedAreaResult>[],
+        pictures: const <String>[],
+      );
 
   double get scorePercent {
     int total = 0;
@@ -143,165 +160,65 @@ class CabinAuditDetailModel {
       for (final item in area.checkItems) {
         if (item.status != AuditStatus.na) {
           total++;
-          if (item.status == AuditStatus.pass) passed++;
+          if (item.status == AuditStatus.pass) {
+            passed++;
+          }
         }
       }
     }
-    if (total == 0) return 0;
+    if (total == 0) {
+      return 0;
+    }
     return (passed / total) * 100;
   }
 
-  // Hirtik's rule: ANY subcategory fail = whole audit FAIL
   bool get hasAnyFail => auditedAreas.any(
-    (area) => area.checkItems.any((c) => c.status == AuditStatus.fail),
-  );
+        (area) => area.checkItems.any((c) => c.status == AuditStatus.fail),
+      );
 }
 
-// =====================
-// CONTROLLER
-// =====================
+class _ParsedNotes {
+  const _ParsedNotes({
+    required this.aircraft,
+    required this.supervisor,
+    required this.notes,
+  });
+
+  final String aircraft;
+  final String supervisor;
+  final String notes;
+}
+
 class CabinQualityAuditController extends GetxController {
-  final AppApiService _api = Get.find<AppApiService>();
-  final Rx<CabinAuditDetailModel> detail = CabinAuditDetailModel(
-    auditorName: 'Sarah Johnson',
-    date: 'Dec 15, 2024',
-    time: '2:30 PM',
-    gate: 'Gate A-12',
-    type: 'Charter',
-    tailNumber: 'N123DL',
-    notes:
-        'Overall cabin was in acceptable condition. '
-        'Row 22C tray table latch was broken.',
-    pictures: [
-      'assets/images/indor.png',
-      'assets/images/window.png',
-      'assets/images/indor.png',
-    ],
-    auditedAreas: [
-      // ── First Class seat 1A ─────────────────────────────
-      // items from AuditCheckItems.areaItems['first_class']
-      AuditedAreaResult(
-        areaId: '1A',
-        sectionLabel: 'First Class',
-        checkItems: [
-          CheckItemResult(itemName: 'Seat Recline', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'IFE Screen', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Tray Table', status: AuditStatus.pass),
-          CheckItemResult(
-            itemName: 'Headrest / Pillow',
-            status: AuditStatus.pass,
-          ),
-          CheckItemResult(itemName: 'Blanket', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Seat Pocket', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Armrest', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Floor / Carpet', status: AuditStatus.na),
-        ],
-      ),
+  CabinQualityAuditController({required this.api});
 
-      // ── Comfort seat 15B ────────────────────────────────
-      // items from AuditCheckItems.areaItems['comfort']
-      AuditedAreaResult(
-        areaId: '15B',
-        sectionLabel: 'Comfort',
-        checkItems: [
-          CheckItemResult(itemName: 'Seat', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Tray Table', status: AuditStatus.fail),
-          CheckItemResult(itemName: 'IFE Screen', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Overhead Bin', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Seat Pocket', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Floor / Carpet', status: AuditStatus.pass),
-        ],
-      ),
-
-      // ── Main Cabin seat 22C ─────────────────────────────
-      // items from AuditCheckItems.areaItems['main_cabin']
-      AuditedAreaResult(
-        areaId: '22C',
-        sectionLabel: 'Main Cabin',
-        checkItems: [
-          CheckItemResult(
-            itemName: 'Seat Back Trash',
-            status: AuditStatus.fail,
-          ),
-          CheckItemResult(itemName: 'Tray Table', status: AuditStatus.fail),
-          CheckItemResult(itemName: 'IFE Screen', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Floor / Carpet', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Overhead Bin', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Seat Pocket', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Armrest', status: AuditStatus.pass),
-        ],
-      ),
-
-      // ── LAV FWD ─────────────────────────────────────────
-      // items from AuditCheckItems.areaItems['lav']
-      AuditedAreaResult(
-        areaId: 'LAV FWD',
-        sectionLabel: 'Lav',
-        checkItems: [
-          CheckItemResult(itemName: 'Soap Dispenser', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Trash / Bin', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Mirror', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Toilet / Bowl', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Floor', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Sink', status: AuditStatus.pass),
-          CheckItemResult(itemName: 'Paper Towels', status: AuditStatus.fail),
-          CheckItemResult(itemName: 'Air Freshener', status: AuditStatus.pass),
-        ],
-      ),
-
-      // ── Galley FWD ──────────────────────────────────────
-      // items from AuditCheckItems.areaItems['galley']
-      AuditedAreaResult(
-        areaId: 'Galley FWD',
-        sectionLabel: 'Galley',
-        pictures: ['assets/images/indor.png', 'assets/images/window.png'],
-        checkItems: [
-          CheckItemResult(itemName: 'Trash', status: AuditStatus.pass),
-          CheckItemResult(
-            itemName: 'Counter / Surface',
-            status: AuditStatus.pass,
-          ),
-          CheckItemResult(
-            itemName: 'Oven / Microwave',
-            status: AuditStatus.pass,
-          ),
-          CheckItemResult(itemName: 'Coffee Maker', status: AuditStatus.pass),
-          CheckItemResult(
-            itemName: 'Storage Compartments',
-            status: AuditStatus.pass,
-          ),
-          CheckItemResult(itemName: 'Floor', status: AuditStatus.pass),
-        ],
-      ),
-    ],
-  ).obs;
-
+  final AppApiService api;
+  final Rx<CabinAuditDetailModel> detail = CabinAuditDetailModel.empty().obs;
   final RxBool isLoading = false.obs;
   final Rx<AuditStatus?> filter = Rx<AuditStatus?>(null);
-  final RxString currentDate = 'Dec 15, 2024 • 2:30 PM'.obs;
+  final RxString currentDate = ''.obs;
   final RxInt expandedAreaIndex = RxInt(-1);
 
   Future<void> loadAudit(String id) async {
     isLoading.value = true;
+    expandedAreaIndex.value = -1;
 
     try {
-      final response = await _api.getCabinQualityAudit(id);
+      final response = await api.getCabinQualityAudit(id);
       final auditAt = DateTime.tryParse(
         response['auditAt']?.toString() ?? '',
       )?.toLocal();
-      final responses = List<Map<String, dynamic>>.from(
+      final parsedNotes = _parseNotes(
+        otherFindings: response['otherFindings']?.toString(),
+        additionalNotes: response['additionalNotes']?.toString(),
+      );
+      final detailedResults = _parseDetailedAreas(response['detailedResultsJson']);
+      final fallbackResponses = List<Map<String, dynamic>>.from(
         (response['responses'] as List?) ?? const <dynamic>[],
       );
       final files = List<Map<String, dynamic>>.from(
         (response['files'] as List?) ?? const <dynamic>[],
       );
-
-      final combinedNotes = [
-        if ((response['otherFindings'] as String?)?.trim().isNotEmpty ?? false)
-          'Other Findings\n${(response['otherFindings'] as String).trim()}',
-        if ((response['additionalNotes'] as String?)?.trim().isNotEmpty ?? false)
-          'Additional Notes\n${(response['additionalNotes'] as String).trim()}',
-      ].join('\n\n');
 
       detail.value = CabinAuditDetailModel(
         auditorName:
@@ -310,15 +227,19 @@ class CabinQualityAuditController extends GetxController {
         time: auditAt == null ? '' : DateFormat('h:mm a').format(auditAt),
         gate: _formatGateLabel(response['gateCodeSnapshot']?.toString() ?? ''),
         type: (response['cleanTypeSnapshot'] as String?)?.trim() ?? '',
-        tailNumber: 'Not provided',
-        auditedAreas: responses.map(_mapResponseToArea).toList(),
+        aircraft: parsedNotes.aircraft,
+        supervisor: parsedNotes.supervisor,
+        auditedAreas: detailedResults.isNotEmpty
+            ? detailedResults
+            : fallbackResponses.map(_mapFallbackResponseToArea).toList(),
         pictures: files
             .map((entry) => entry['fileId']?.toString() ?? '')
             .where((entry) => entry.isNotEmpty)
-            .map(_api.buildFileContentUrl)
+            .map(api.buildFileContentUrl)
             .toList(),
-        notes: combinedNotes,
+        notes: parsedNotes.notes,
       );
+
       currentDate.value = auditAt == null
           ? ''
           : DateFormat('MMM d, y • h:mm a').format(auditAt);
@@ -343,7 +264,52 @@ class CabinQualityAuditController extends GetxController {
     }
   }
 
-  AuditedAreaResult _mapResponseToArea(Map<String, dynamic> item) {
+  List<AuditedAreaResult> _parseDetailedAreas(dynamic raw) {
+    if (raw is! List) {
+      return const <AuditedAreaResult>[];
+    }
+
+    return raw
+        .map((entry) => _asMap(entry))
+        .where((entry) => entry.isNotEmpty)
+        .map((entry) {
+          final rawItems = List<dynamic>.from(
+            entry['checkItems'] as List? ?? const <dynamic>[],
+          );
+
+          return AuditedAreaResult(
+            areaId: entry['areaId']?.toString().trim() ?? '',
+            sectionLabel: entry['sectionLabel']?.toString().trim() ?? 'Area',
+            checkItems: rawItems
+                .map((item) => _asMap(item))
+                .where((item) => item.isNotEmpty)
+                .map(
+                  (item) => CheckItemResult(
+                    itemName: item['itemName']?.toString().trim() ?? 'Item',
+                    status: _mapAuditStatus(item['status']?.toString() ?? 'na'),
+                    pictures: List<dynamic>.from(
+                      item['imageFileIds'] as List? ?? const <dynamic>[],
+                    )
+                        .map((fileId) => fileId.toString().trim())
+                        .where((fileId) => fileId.isNotEmpty)
+                        .map(api.buildFileContentUrl)
+                        .toList(),
+                    hashtags: List<dynamic>.from(
+                      item['hashtags'] as List? ?? const <dynamic>[],
+                    )
+                        .map((tag) => tag.toString().trim())
+                        .where((tag) => tag.isNotEmpty)
+                        .toList(),
+                  ),
+                )
+                .toList(),
+          );
+        })
+        .where((area) => area.checkItems.isNotEmpty)
+        .toList();
+  }
+
+  AuditedAreaResult _mapFallbackResponseToArea(Map<String, dynamic> item) {
     final checklistItem =
         item['checklistItem'] is Map<String, dynamic>
             ? item['checklistItem'] as Map<String, dynamic>
@@ -360,21 +326,23 @@ class CabinQualityAuditController extends GetxController {
         CheckItemResult(
           itemName: label,
           status: _mapAuditStatus(item['response']?.toString() ?? 'NA'),
+          pictures: files
+              .map((entry) => entry['fileId']?.toString() ?? '')
+              .where((entry) => entry.isNotEmpty)
+              .map(api.buildFileContentUrl)
+              .toList(),
         ),
       ],
-      pictures: files
-          .map((entry) => entry['fileId']?.toString() ?? '')
-          .where((entry) => entry.isNotEmpty)
-          .map(_api.buildFileContentUrl)
-          .toList(),
     );
   }
 
   AuditStatus _mapAuditStatus(String value) {
-    switch (value) {
-      case 'YES':
+    switch (value.trim().toLowerCase()) {
+      case 'yes':
+      case 'pass':
         return AuditStatus.pass;
-      case 'NO':
+      case 'no':
+      case 'fail':
         return AuditStatus.fail;
       default:
         return AuditStatus.na;
@@ -392,7 +360,66 @@ class CabinQualityAuditController extends GetxController {
         : 'Gate $trimmed';
   }
 
+  _ParsedNotes _parseNotes({
+    String? otherFindings,
+    String? additionalNotes,
+  }) {
+    String aircraft = '';
+    String supervisor = '';
+    final noteBlocks = <String>[];
+
+    final findings = otherFindings?.trim() ?? '';
+    if (findings.isNotEmpty) {
+      noteBlocks.add('Other Findings\n$findings');
+    }
+
+    final rawAdditional = additionalNotes?.trim() ?? '';
+    if (rawAdditional.isNotEmpty) {
+      final noteLines = <String>[];
+      for (final line in rawAdditional.split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) {
+          if (noteLines.isNotEmpty && noteLines.last.isNotEmpty) {
+            noteLines.add('');
+          }
+          continue;
+        }
+        if (trimmed.startsWith('Aircraft:')) {
+          aircraft = trimmed.substring('Aircraft:'.length).trim();
+          continue;
+        }
+        if (trimmed.startsWith('Supervisor/Lead:')) {
+          supervisor = trimmed.substring('Supervisor/Lead:'.length).trim();
+          continue;
+        }
+        noteLines.add(trimmed);
+      }
+
+      final cleanedNotes = noteLines.join('\n').trim();
+      if (cleanedNotes.isNotEmpty) {
+        noteBlocks.add('Additional Notes\n$cleanedNotes');
+      }
+    }
+
+    return _ParsedNotes(
+      aircraft: aircraft,
+      supervisor: supervisor,
+      notes: noteBlocks.join('\n\n').trim(),
+    );
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, entry) => MapEntry(key.toString(), entry));
+    }
+    return <String, dynamic>{};
+  }
+
   void previousDate() {}
+
   void nextDate() {}
 
   void toggleArea(int index) {
@@ -400,16 +427,13 @@ class CabinQualityAuditController extends GetxController {
   }
 }
 
-// =====================
-// SCREEN
-// =====================
 class CabinQualityAuditScreen extends StatefulWidget {
-  final String? auditId;
-
   const CabinQualityAuditScreen({
     super.key,
     this.auditId,
   });
+
+  final String? auditId;
 
   @override
   State<CabinQualityAuditScreen> createState() =>
@@ -418,13 +442,20 @@ class CabinQualityAuditScreen extends StatefulWidget {
 
 class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
   late final CabinQualityAuditController controller;
+  late final String _controllerTag;
   final PageController _pageController = PageController();
   final RxInt _currentPage = 0.obs;
 
   @override
   void initState() {
     super.initState();
-    controller = Get.put(CabinQualityAuditController());
+    _controllerTag = widget.auditId?.trim().isNotEmpty ?? false
+        ? widget.auditId!.trim()
+        : 'cabin-quality-detail-${identityHashCode(this)}';
+    controller = Get.put(
+      CabinQualityAuditController(api: Get.find<AppApiService>()),
+      tag: _controllerTag,
+    );
     if ((widget.auditId?.trim().isNotEmpty ?? false)) {
       controller.loadAudit(widget.auditId!.trim());
     }
@@ -433,6 +464,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    Get.delete<CabinQualityAuditController>(tag: _controllerTag);
     super.dispose();
   }
 
@@ -478,7 +510,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     );
   }
 
-  // ── App Bar ─────────────────────────────────────────────
   Widget _buildAppBar() {
     return Container(
       color: Colors.white,
@@ -562,13 +593,13 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
             : null,
         onTap: () {
           controller.filter.value = status;
+          controller.expandedAreaIndex.value = -1;
           Get.back();
         },
       );
     });
   }
 
-  // ── Date Navigation ──────────────────────────────────────
   Widget _buildDateNavigation() {
     return Container(
       color: Colors.white,
@@ -586,12 +617,17 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                 size: 24.sp,
               ),
             ),
-            Text(
-              controller.currentDate.value,
-              style: GoogleFonts.poppins(
-                fontSize: 13.sp,
-                fontWeight: FontWeight.w500,
-                color: _Colors.primary,
+            Expanded(
+              child: Text(
+                controller.currentDate.value.isEmpty
+                    ? 'Audit Details'
+                    : controller.currentDate.value,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w500,
+                  color: _Colors.primary,
+                ),
               ),
             ),
             GestureDetector(
@@ -612,7 +648,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     return Obx(() {
       final d = controller.detail.value;
       final score = d.scorePercent;
-      // Hirtik: any subcategory fail = FAIL regardless of score %
       final isGood = !d.hasAnyFail;
       final scoreColor = isGood ? _Colors.pass : _Colors.fail;
       final failAreaCount = d.auditedAreas
@@ -629,7 +664,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         ),
         child: Row(
           children: [
-            // Score circle
             Container(
               width: 64.w,
               height: 64.h,
@@ -690,7 +724,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     });
   }
 
-  // ── Info Card ────────────────────────────────────────────
   Widget _buildInfoCard() {
     return Obx(() {
       final d = controller.detail.value;
@@ -704,7 +737,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Name with blue bar
             Row(
               children: [
                 Container(
@@ -716,12 +748,14 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                   ),
                 ),
                 SizedBox(width: 10.w),
-                Text(
-                  d.auditorName,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w700,
-                    color: _Colors.namePrimary,
+                Expanded(
+                  child: Text(
+                    d.auditorName,
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w700,
+                      color: _Colors.namePrimary,
+                    ),
                   ),
                 ),
               ],
@@ -733,25 +767,34 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
             SizedBox(height: 10.h),
             Divider(color: _Colors.divider, height: 1),
             SizedBox(height: 12.h),
-            _labelValue('Type', d.type),
+            _labelValue('Type', d.type.isEmpty ? 'Not provided' : d.type),
             SizedBox(height: 8.h),
-            _labelValue('Tail Number', d.tailNumber),
+            _labelValue(
+              'Aircraft',
+              d.aircraft.isEmpty ? 'Not provided' : d.aircraft,
+            ),
+            if (d.supervisor.isNotEmpty) ...[
+              SizedBox(height: 8.h),
+              _labelValue('Supervisor', d.supervisor),
+            ],
           ],
         ),
       );
     });
   }
 
-  // ── Audited Areas List ───────────────────────────────────
   Widget _buildAuditedAreasList() {
     return Obx(() {
       final d = controller.detail.value;
       final currentFilter = controller.filter.value;
 
       final filteredAreas = d.auditedAreas.where((area) {
-        if (currentFilter == null) return true; // Show all
-        // Show if overall status matches filter OR any item inside area matches filter
-        if (area.overallStatus == currentFilter) return true;
+        if (currentFilter == null) {
+          return true;
+        }
+        if (area.overallStatus == currentFilter) {
+          return true;
+        }
         return area.checkItems.any((c) => c.status == currentFilter);
       }).toList();
 
@@ -807,7 +850,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                       ),
                     ),
                   ),
-                  if (currentFilter != null) ...[_statusBadge(currentFilter)],
+                  if (currentFilter != null) _statusBadge(currentFilter),
                 ],
               ),
             ),
@@ -861,17 +904,15 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                         ),
                       ),
                       Text(
-                        'Area: ${area.areaId}  •  '
-                        '${area.passCount}P  ${area.failCount}F  ${area.naCount}N/A',
+                        'Area: ${area.areaId}  •  ${area.passCount}P  ${area.failCount}F  ${area.naCount}N/A',
                         style: GoogleFonts.poppins(
                           fontSize: 11.sp,
                           color: _Colors.textGrey,
                         ),
                       ),
                       SizedBox(height: 6.h),
-                      // ── Per-area progress bar + score ──────
                       LayoutBuilder(
-                        builder: (_, constraints) {
+                        builder: (context, constraints) {
                           final pct = area.scorePercent / 100;
                           final barColor = overall == AuditStatus.fail
                               ? _Colors.fail
@@ -935,11 +976,13 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
 
   Widget _buildExpandedItems(AuditedAreaResult area) {
     final currentFilter = controller.filter.value;
-
-    // Filter out N/A. Further filter if user selected Pass/Fail overall.
     final itemsToShow = area.checkItems.where((item) {
-      if (item.status == AuditStatus.na) return false;
-      if (currentFilter != null && item.status != currentFilter) return false;
+      if (item.status == AuditStatus.na) {
+        return false;
+      }
+      if (currentFilter != null && item.status != currentFilter) {
+        return false;
+      }
       return true;
     }).toList();
 
@@ -966,36 +1009,10 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
               ),
             ),
           ] else ...[
-            ...itemsToShow.map((item) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 5.h),
-                child: Row(
-                  children: [
-                    Icon(
-                      item.status.icon,
-                      color: item.status.color,
-                      size: 16.sp,
-                    ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: Text(
-                        item.itemName,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12.sp,
-                          color: _Colors.namePrimary,
-                        ),
-                      ),
-                    ),
-                    _statusChip(item.status),
-                  ],
-                ),
-              );
-            }),
+            ...itemsToShow.map((item) => _buildCheckItemDetail(item)),
           ],
-
-          // Inline section pictures
-          if (area.pictures != null && area.pictures!.isNotEmpty) ...[
-            SizedBox(height: 12.h),
+          if (area.pictures.isNotEmpty) ...[
+            SizedBox(height: 8.h),
             Divider(color: _Colors.divider),
             SizedBox(height: 8.h),
             Text(
@@ -1007,7 +1024,74 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
               ),
             ),
             SizedBox(height: 8.h),
-            _buildAreaPictures(area.pictures!),
+            _buildAreaPictures(area.pictures),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckItemDetail(CheckItemResult item) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 6.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(item.status.icon, color: item.status.color, size: 16.sp),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  item.itemName,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.sp,
+                    color: _Colors.namePrimary,
+                  ),
+                ),
+              ),
+              _statusChip(item.status),
+            ],
+          ),
+          if (item.hashtags.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.only(left: 26.w),
+              child: Wrap(
+                spacing: 6.w,
+                runSpacing: 6.h,
+                children: item.hashtags
+                    .map(
+                      (tag) => Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 4.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _Colors.primary.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999.r),
+                        ),
+                        child: Text(
+                          tag,
+                          style: GoogleFonts.poppins(
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.w600,
+                            color: _Colors.primary,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+          if (item.pictures.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.only(left: 26.w),
+              child: _buildAreaPictures(item.pictures),
+            ),
           ],
         ],
       ),
@@ -1021,11 +1105,11 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         scrollDirection: Axis.horizontal,
         itemCount: pictures.length,
         itemBuilder: (context, i) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8.r),
-            child: Container(
-              width: 80.w,
-              margin: EdgeInsets.only(right: 8.w),
+          return Container(
+            width: 80.w,
+            margin: EdgeInsets.only(right: 8.w),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8.r),
               child: _buildImageContent(
                 pictures[i],
                 width: 80.w,
@@ -1039,11 +1123,12 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     );
   }
 
-  // ── Pictures Card ────────────────────────────────────────
   Widget _buildPicturesCard() {
     return Obx(() {
       final d = controller.detail.value;
-      if (d.pictures.isEmpty) return const SizedBox.shrink();
+      if (d.pictures.isEmpty) {
+        return const SizedBox.shrink();
+      }
       return Container(
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
         padding: EdgeInsets.all(16.w),
@@ -1063,7 +1148,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     });
   }
 
-  // ── Notes Card ───────────────────────────────────────────
   Widget _buildNotesCard() {
     return Obx(() {
       final d = controller.detail.value;
@@ -1096,7 +1180,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     });
   }
 
-  // ── Image Slider ─────────────────────────────────────────
   Widget _buildImageSlider(List<String> images) {
     return Column(
       children: [
@@ -1158,17 +1241,12 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         height: height,
         fit: fit,
         headers: imageHeaders,
-        errorBuilder: (_, __, ___) => _buildMissingImage(width, height),
+        errorBuilder: (context, error, stackTrace) =>
+            _buildMissingImage(width, height),
       );
     }
 
-    return Image.asset(
-      imagePath,
-      width: width,
-      height: height,
-      fit: fit,
-      errorBuilder: (_, __, ___) => _buildMissingImage(width, height),
-    );
+    return _buildMissingImage(width, height);
   }
 
   Widget _buildMissingImage(double width, double height) {
@@ -1187,7 +1265,6 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     );
   }
 
-  // ── Shared Helper Widgets ────────────────────────────────
   Widget _sectionTitle(String title) {
     return Row(
       children: [
@@ -1224,17 +1301,23 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
 
   Widget _labelValue(String label, String value) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           '$label : ',
-          style: GoogleFonts.poppins(fontSize: 13.sp, color: _Colors.textGrey),
-        ),
-        Text(
-          value,
           style: GoogleFonts.poppins(
             fontSize: 13.sp,
-            fontWeight: FontWeight.w600,
-            color: _Colors.namePrimary,
+            color: _Colors.textGrey,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600,
+              color: _Colors.namePrimary,
+            ),
           ),
         ),
       ],
@@ -1287,11 +1370,13 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
       case 'business class':
         return Icons.airline_seat_recline_extra_rounded;
       case 'comfort':
+      case 'comfort+':
         return Icons.airline_seat_recline_normal_rounded;
       case 'main cabin':
       case 'economy':
         return Icons.weekend_rounded;
       case 'lav':
+      case 'lav / restroom':
         return Icons.wc_rounded;
       case 'galley':
         return Icons.restaurant_rounded;
