@@ -1936,6 +1936,64 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         : combined.substring(0, maxLength);
   }
 
+  String _buildDetailedAreaId(String areaName) {
+    final trimmed = areaName.trim();
+    if (trimmed.toLowerCase().startsWith('seat ')) {
+      return trimmed.substring(5).trim();
+    }
+    return trimmed;
+  }
+
+  String _buildDetailedSectionLabel(String areaName) {
+    final trimmed = areaName.trim();
+    final normalized = trimmed.toLowerCase();
+
+    if (normalized.startsWith('seat ')) {
+      final seatId = trimmed.substring(5).trim();
+      final row = int.tryParse(seatId.replaceAll(RegExp(r'[^0-9]'), ''));
+      if (row != null) {
+        for (final section in _ctrl.currentAircraftMap.sections) {
+          if (row >= section.startRow && row <= section.endRow) {
+            final sectionName = section.name.trim();
+            final lowerName = sectionName.toLowerCase();
+            if (lowerName.contains('first') || lowerName.contains('business')) {
+              return 'First Class';
+            }
+            if (lowerName.contains('comfort')) {
+              return 'Delta Comfort';
+            }
+            if (lowerName.contains('main')) {
+              return 'Main Cabin';
+            }
+            return sectionName;
+          }
+        }
+      }
+      return 'Cabin Seat';
+    }
+
+    if (normalized.contains('galley')) {
+      return 'Galley';
+    }
+    if (normalized.contains('lav')) {
+      return 'Lav';
+    }
+    if (normalized.contains('overhead')) {
+      return 'Overhead Bins';
+    }
+    if (normalized.contains('pocket')) {
+      return 'Seat Pockets';
+    }
+    if (normalized.contains('crew')) {
+      return 'Crew Rest Area';
+    }
+    if (normalized.contains('emergency')) {
+      return 'Emergency Equipment';
+    }
+
+    return trimmed;
+  }
+
   Widget _buildSubmitButton() {
     return Obx(() {
       final valid = _ctrl.isFormValid;
@@ -1943,20 +2001,22 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         color: _C.white,
         padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
         child: GestureDetector(
-          onTap: _isSubmitting ? null : () {
-            if (!valid) {
-              Get.snackbar(
-                'Incomplete Form',
-                _ctrl.validationMessage,
-                backgroundColor: _C.red,
-                colorText: Colors.white,
-                snackPosition: SnackPosition.TOP,
-                duration: const Duration(seconds: 3),
-              );
-              return;
-            }
-            _handleSubmit();
-          },
+          onTap: _isSubmitting
+              ? null
+              : () {
+                  if (!valid) {
+                    Get.snackbar(
+                      'Incomplete Form',
+                      _ctrl.validationMessage,
+                      backgroundColor: _C.red,
+                      colorText: Colors.white,
+                      snackPosition: SnackPosition.TOP,
+                      duration: const Duration(seconds: 3),
+                    );
+                    return;
+                  }
+                  _handleSubmit();
+                },
           child: Container(
             height: 52.h,
             decoration: BoxDecoration(
@@ -2027,6 +2087,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       );
 
       final areaResults = <Map<String, dynamic>>[];
+      final detailedAreaResults = <Map<String, dynamic>>[];
       for (final card in _ctrl.areaCards) {
         final imageFileIds = await _uploadImageFiles([
           ...card.images,
@@ -2046,12 +2107,26 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         }
 
         areaResults.add(areaPayload);
+        detailedAreaResults.add({
+          'areaId': _buildDetailedAreaId(card.areaName),
+          'sectionLabel': _buildDetailedSectionLabel(card.areaName),
+          if (imageFileIds.isNotEmpty) 'imageFileIds': imageFileIds,
+          'checkItems': card.subItems
+              .map(
+                (sub) => {
+                  'itemName': sub.itemName,
+                  'status': sub.status.isEmpty ? 'na' : sub.status,
+                },
+              )
+              .toList(),
+        });
       }
 
       await _api.createCabinSecurityTraining({
         'shipNumber': _ctrl.shipNumber.value.trim(),
         'gateId': gateId,
         'areaResults': areaResults,
+        'detailedAreaResults': detailedAreaResults,
         if (_ctrl.otherFindingsCtrl.text.trim().isNotEmpty)
           'otherFindings': _ctrl.otherFindingsCtrl.text.trim(),
         if (_buildSubmissionNotes() != null)
@@ -2114,7 +2189,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                 SizedBox(height: 8.h),
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 12.h,
+                  ),
                   decoration: BoxDecoration(
                     color: _C.bg,
                     borderRadius: BorderRadius.circular(12.r),
@@ -2201,7 +2279,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         setState(() => _isSubmitting = false);
       }
     }
-
   }
 
   Widget _summaryRow(

@@ -17,7 +17,8 @@ import '../../services/session_service.dart';
 // MODELS
 // =====================
 class ChatListItem {
-  final String id;
+  final String userId;
+  final String conversationId;
   final String userName;
   final String phone;
   final String userImage;
@@ -27,7 +28,8 @@ class ChatListItem {
   final int unreadCount;
 
   ChatListItem({
-    required this.id,
+    required this.userId,
+    required this.conversationId,
     required this.userName,
     required this.phone,
     required this.userImage,
@@ -42,10 +44,7 @@ class InboxTabItem {
   final String key;
   final String label;
 
-  const InboxTabItem({
-    required this.key,
-    required this.label,
-  });
+  const InboxTabItem({required this.key, required this.label});
 }
 
 class ChatMessage {
@@ -81,8 +80,7 @@ class InboxController extends GetxController {
   List<InboxTabItem> get tabs => [
     const InboxTabItem(key: 'all', label: 'All'),
     InboxTabItem(key: 'unread', label: 'Unread (${unreadCount.value})'),
-    const InboxTabItem(key: 'groups', label: 'Groups'),
-    const InboxTabItem(key: 'favorite', label: 'Favorite'),
+    const InboxTabItem(key: 'online', label: 'Online'),
   ];
 
   @override
@@ -98,14 +96,33 @@ class InboxController extends GetxController {
     isLoading.value = true;
 
     try {
-      final conversations = await _api.listConversations(
-        tab: selectedTab.value == 'all' ? null : selectedTab.value,
-        query: searchQuery.value.trim().isEmpty ? null : searchQuery.value.trim(),
+      final trimmedQuery = searchQuery.value.trim();
+      final conversations = await _api.listConversations();
+      final users = await _api.listChatUsers(
+        query: trimmedQuery.isEmpty ? null : trimmedQuery,
       );
 
-      final mapped = conversations
-          .map(_mapConversation)
-          .where((item) => item.id.isNotEmpty)
+      final directConversationsByUserId = <String, Map<String, dynamic>>{};
+      for (final item in conversations) {
+        final otherParticipant =
+            item['otherParticipant'] is Map<String, dynamic>
+            ? item['otherParticipant'] as Map<String, dynamic>
+            : <String, dynamic>{};
+        final otherUserId = otherParticipant['id']?.toString() ?? '';
+        if (otherUserId.isEmpty) {
+          continue;
+        }
+        directConversationsByUserId[otherUserId] = item;
+      }
+
+      final mapped = users
+          .map(
+            (user) => _mapChatUser(
+              user,
+              directConversationsByUserId[user['id']?.toString() ?? ''],
+            ),
+          )
+          .where((item) => item.userId.isNotEmpty)
           .toList();
 
       unreadCount.value = mapped.fold<int>(
@@ -138,28 +155,31 @@ class InboxController extends GetxController {
     }
   }
 
-  ChatListItem _mapConversation(Map<String, dynamic> item) {
-    final otherParticipant =
-        item['otherParticipant'] is Map<String, dynamic>
-            ? item['otherParticipant'] as Map<String, dynamic>
-            : <String, dynamic>{};
-    final timestamp = item['timestamp']?.toString() ?? '';
-    final preview = (item['lastMessagePreview'] as String?)?.trim() ?? '';
-
+  ChatListItem _mapChatUser(
+    Map<String, dynamic> user,
+    Map<String, dynamic>? conversation,
+  ) {
+    final timestamp = conversation?['timestamp']?.toString() ?? '';
+    final preview =
+        (conversation?['lastMessagePreview'] as String?)?.trim() ?? '';
+    final profileImageFileId =
+        (user['profileImageFileId'] as String?)?.trim() ?? '';
     return ChatListItem(
-      id: (item['id'] as String?) ?? '',
-      userName: ((item['name'] as String?)?.trim().isNotEmpty ?? false)
-          ? (item['name'] as String).trim()
-          : 'Conversation',
-      phone:
-          (otherParticipant['uid'] as String?)?.trim().isNotEmpty == true
-              ? (otherParticipant['uid'] as String).trim()
-              : ((otherParticipant['email'] as String?)?.trim() ?? ''),
-      userImage: '',
-      lastMessage: preview.isNotEmpty ? preview : 'No messages yet',
+      userId: user['id']?.toString() ?? '',
+      conversationId: conversation?['id']?.toString() ?? '',
+      userName: (user['name'] as String?)?.trim().isNotEmpty == true
+          ? (user['name'] as String).trim()
+          : 'Unknown User',
+      phone: (user['uid'] as String?)?.trim().isNotEmpty == true
+          ? (user['uid'] as String).trim()
+          : ((user['email'] as String?)?.trim() ?? ''),
+      userImage: profileImageFileId.isEmpty
+          ? ''
+          : _api.buildFileContentUrl(profileImageFileId),
+      lastMessage: preview.isNotEmpty ? preview : 'Tap to start chatting',
       time: _formatConversationTime(timestamp),
-      isOnline: item['isOnline'] == true,
-      unreadCount: (item['unreadCount'] as num?)?.toInt() ?? 0,
+      isOnline: conversation?['isOnline'] == true,
+      unreadCount: (conversation?['unreadCount'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -182,10 +202,54 @@ class InboxController extends GetxController {
 
   List<ChatListItem> getFilteredChats() {
     return chatList.where((chat) {
-      final matchesSearch = searchQuery.value.isEmpty ||
-          chat.userName.toLowerCase().contains(searchQuery.value.toLowerCase());
-      return matchesSearch;
+      final query = searchQuery.value.trim().toLowerCase();
+      final matchesSearch =
+          query.isEmpty ||
+          chat.userName.toLowerCase().contains(query) ||
+          chat.phone.toLowerCase().contains(query);
+      if (!matchesSearch) {
+        return false;
+      }
+      if (selectedTab.value == 'unread') {
+        return chat.unreadCount > 0;
+      }
+      if (selectedTab.value == 'online') {
+        return chat.isOnline;
+      }
+      return true;
     }).toList();
+  }
+
+  Future<ChatListItem> openConversation(ChatListItem chat) async {
+    if (chat.conversationId.isNotEmpty) {
+      return chat;
+    }
+
+    final created = await _api.createDirectConversation(chat.userId);
+    final conversationId = created['id']?.toString() ?? '';
+    if (conversationId.isEmpty) {
+      throw const ApiException('Unable to open this conversation.');
+    }
+
+    final updated = ChatListItem(
+      userId: chat.userId,
+      conversationId: conversationId,
+      userName: chat.userName,
+      phone: chat.phone,
+      userImage: chat.userImage,
+      lastMessage: chat.lastMessage,
+      time: chat.time,
+      isOnline: chat.isOnline,
+      unreadCount: chat.unreadCount,
+    );
+
+    final index = chatList.indexWhere((item) => item.userId == chat.userId);
+    if (index >= 0) {
+      chatList[index] = updated;
+      chatList.refresh();
+    }
+
+    return updated;
   }
 
   @override
@@ -240,27 +304,70 @@ class _InboxScreenState extends State<InboxScreen> {
         children: [
           GestureDetector(
             onTap: () => Get.back(),
-            child: Icon(Icons.arrow_back, color: AppColors.textDark, size: 22.sp),
+            child: Icon(
+              Icons.arrow_back,
+              color: AppColors.textDark,
+              size: 22.sp,
+            ),
           ),
           SizedBox(width: 12.w),
           Expanded(
-            child: Text(
-              'Search Category',
-              style: GoogleFonts.poppins(
-                fontSize: 15.sp,
-                color: AppColors.textGrey,
-                fontWeight: FontWeight.w400,
+            child: Container(
+              height: 44.h,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7FB),
+                borderRadius: BorderRadius.circular(14.r),
+                border: Border.all(color: const Color(0xFFE7ECF3)),
+              ),
+              child: TextField(
+                controller: controller.searchController,
+                onChanged: controller.updateSearch,
+                onSubmitted: (_) => controller.loadConversations(),
+                decoration: InputDecoration(
+                  hintText: 'Search people',
+                  hintStyle: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    color: AppColors.textGrey,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: AppColors.textGrey,
+                    size: 20.sp,
+                  ),
+                  suffixIcon: Obx(
+                    () => controller.searchQuery.value.trim().isEmpty
+                        ? const SizedBox.shrink()
+                        : IconButton(
+                            onPressed: () {
+                              controller.searchController.clear();
+                              controller.updateSearch('');
+                              controller.loadConversations();
+                            },
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: AppColors.textGrey,
+                              size: 18.sp,
+                            ),
+                          ),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 12.h),
+                ),
               ),
             ),
           ),
-          Container(
-            width: 40.w,
-            height: 40.h,
-            decoration: BoxDecoration(
-              color: AppColors.mainAppColor,
-              borderRadius: BorderRadius.circular(10.r),
+          SizedBox(width: 10.w),
+          GestureDetector(
+            onTap: controller.loadConversations,
+            child: Container(
+              width: 40.w,
+              height: 40.h,
+              decoration: BoxDecoration(
+                color: AppColors.mainAppColor,
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: Icon(Icons.tune_rounded, color: Colors.white, size: 20.sp),
             ),
-            child: Icon(Icons.search, color: Colors.white, size: 20.sp),
           ),
         ],
       ),
@@ -283,7 +390,7 @@ class _InboxScreenState extends State<InboxScreen> {
           ),
           SizedBox(width: 10.w),
           Text(
-            'Chat',
+            'People',
             style: GoogleFonts.poppins(
               fontSize: 20.sp,
               fontWeight: FontWeight.w700,
@@ -297,44 +404,46 @@ class _InboxScreenState extends State<InboxScreen> {
 
   // ── Tab Bar ─────────────────────────────────────────────
   Widget _buildTabBar() {
-    return Obx(() => Padding(
-      padding: EdgeInsets.only(left: 16.w, bottom: 8.h),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: controller.tabs.map((tab) {
-            final isSelected = controller.selectedTab.value == tab.key;
-            return GestureDetector(
-              onTap: () => controller.selectedTab.value = tab.key,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: EdgeInsets.only(right: 8.w),
-                padding: EdgeInsets.symmetric(
-                  horizontal: 18.w,
-                  vertical: 8.h,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.chipSelected
-                      : AppColors.chipUnselected,
-                  borderRadius: BorderRadius.circular(20.r),
-                ),
-                child: Text(
-                  tab.label,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w500,
+    return Obx(
+      () => Padding(
+        padding: EdgeInsets.only(left: 16.w, bottom: 8.h),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: controller.tabs.map((tab) {
+              final isSelected = controller.selectedTab.value == tab.key;
+              return GestureDetector(
+                onTap: () => controller.selectedTab.value = tab.key,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: EdgeInsets.only(right: 8.w),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 18.w,
+                    vertical: 8.h,
+                  ),
+                  decoration: BoxDecoration(
                     color: isSelected
-                        ? AppColors.chipTextSelected
-                        : AppColors.chipTextUnselected,
+                        ? AppColors.chipSelected
+                        : AppColors.chipUnselected,
+                    borderRadius: BorderRadius.circular(20.r),
+                  ),
+                  child: Text(
+                    tab.label,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w500,
+                      color: isSelected
+                          ? AppColors.chipTextSelected
+                          : AppColors.chipTextUnselected,
+                    ),
                   ),
                 ),
-              ),
-            );
-          }).toList(),
+              );
+            }).toList(),
+          ),
         ),
       ),
-    ));
+    );
   }
 
   // ── Chat List ───────────────────────────────────────────
@@ -348,7 +457,7 @@ class _InboxScreenState extends State<InboxScreen> {
       if (chats.isEmpty) {
         return Center(
           child: Text(
-            'No chats found',
+            'No users found',
             style: GoogleFonts.poppins(
               fontSize: 14.sp,
               color: AppColors.textGrey,
@@ -368,14 +477,39 @@ class _InboxScreenState extends State<InboxScreen> {
 
   Widget _buildChatTile(ChatListItem chat) {
     return InkWell(
-      onTap: () {
-        Get.to(() => ChatScreen(
-          conversationId: chat.id,
-          contactName: chat.userName,
-          contactPhone: chat.phone,
-          contactImage: chat.userImage,
-          isOnline: chat.isOnline,
-        ));
+      onTap: () async {
+        try {
+          final conversation = await controller.openConversation(chat);
+          if (!mounted) {
+            return;
+          }
+          await Get.to(
+            () => ChatScreen(
+              conversationId: conversation.conversationId,
+              contactName: conversation.userName,
+              contactPhone: conversation.phone,
+              contactImage: conversation.userImage,
+              isOnline: conversation.isOnline,
+            ),
+          );
+          await controller.loadConversations();
+        } on ApiException catch (error) {
+          Get.snackbar(
+            'Chat Unavailable',
+            error.message,
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        } catch (_) {
+          Get.snackbar(
+            'Chat Unavailable',
+            'Unable to open this conversation right now.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+        }
       },
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
@@ -468,18 +602,19 @@ class _InboxScreenState extends State<InboxScreen> {
 
   Widget _buildConversationAvatar(ChatListItem chat) {
     final image = chat.userImage.trim();
+    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
     final initials = chat.userName.isNotEmpty
         ? chat.userName
-            .split(' ')
-            .where((part) => part.isNotEmpty)
-            .take(2)
-            .map((part) => part[0].toUpperCase())
-            .join()
+              .split(' ')
+              .where((part) => part.isNotEmpty)
+              .take(2)
+              .map((part) => part[0].toUpperCase())
+              .join()
         : '?';
 
     ImageProvider<Object>? imageProvider;
     if (image.startsWith('http')) {
-      imageProvider = NetworkImage(image);
+      imageProvider = NetworkImage(image, headers: imageHeaders);
     } else if (image.isNotEmpty) {
       imageProvider = AssetImage(image);
     }
@@ -506,9 +641,7 @@ class _InboxScreenState extends State<InboxScreen> {
 // CHAT CONTROLLER
 // =====================
 class ChatController extends GetxController {
-  ChatController({
-    required this.conversationId,
-  });
+  ChatController({required this.conversationId});
 
   final String conversationId;
   final AppApiService _api = Get.find<AppApiService>();
@@ -561,14 +694,14 @@ class ChatController extends GetxController {
   }
 
   ChatMessage _mapMessage(Map<String, dynamic> item) {
-    final sender =
-        item['sender'] is Map<String, dynamic>
-            ? item['sender'] as Map<String, dynamic>
-            : <String, dynamic>{};
+    final sender = item['sender'] is Map<String, dynamic>
+        ? item['sender'] as Map<String, dynamic>
+        : <String, dynamic>{};
     final currentUserId = _session.user?['id']?.toString() ?? '';
     final senderId = sender['id']?.toString() ?? '';
     final messageType = item['messageType']?.toString() ?? '';
-    final encryptedPayload = (item['encryptedPayload'] as String?)?.trim() ?? '';
+    final encryptedPayload =
+        (item['encryptedPayload'] as String?)?.trim() ?? '';
     final preview = (item['previewText'] as String?)?.trim() ?? '';
 
     String content = encryptedPayload.isNotEmpty ? encryptedPayload : preview;
@@ -581,10 +714,9 @@ class ChatController extends GetxController {
 
     return ChatMessage(
       id: item['id']?.toString() ?? '',
-      senderName:
-          (sender['name'] as String?)?.trim().isNotEmpty == true
-              ? (sender['name'] as String).trim()
-              : 'Unknown',
+      senderName: (sender['name'] as String?)?.trim().isNotEmpty == true
+          ? (sender['name'] as String).trim()
+          : 'Unknown',
       senderImage: null,
       message: content,
       time: _formatMessageTime(item['createdAt']?.toString() ?? ''),
@@ -603,10 +735,9 @@ class ChatController extends GetxController {
   Future<void> _markMessagesAsRead(List<Map<String, dynamic>> items) async {
     final currentUserId = _session.user?['id']?.toString() ?? '';
     for (final item in items) {
-      final sender =
-          item['sender'] is Map<String, dynamic>
-              ? item['sender'] as Map<String, dynamic>
-              : <String, dynamic>{};
+      final sender = item['sender'] is Map<String, dynamic>
+          ? item['sender'] as Map<String, dynamic>
+          : <String, dynamic>{};
       final senderId = sender['id']?.toString() ?? '';
       final messageId = item['id']?.toString() ?? '';
 
@@ -753,8 +884,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
                 itemCount: controller.messages.length,
                 itemBuilder: (context, index) {
-                  final msg =
-                      controller.messages[controller.messages.length - 1 - index];
+                  final msg = controller
+                      .messages[controller.messages.length - 1 - index];
                   return _buildBubble(msg);
                 },
               ),
@@ -798,8 +929,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 widget.isOnline
                     ? 'Online'
                     : (widget.contactPhone.isEmpty
-                        ? 'Direct conversation'
-                        : widget.contactPhone),
+                          ? 'Direct conversation'
+                          : widget.contactPhone),
                 style: GoogleFonts.poppins(
                   fontSize: 11.sp,
                   color: AppColors.textGrey,
@@ -811,8 +942,11 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: Icon(Icons.call_outlined,
-              color: AppColors.mainAppColor, size: 22.sp),
+          icon: Icon(
+            Icons.call_outlined,
+            color: AppColors.mainAppColor,
+            size: 22.sp,
+          ),
           onPressed: () {},
         ),
       ],
@@ -822,20 +956,21 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── Message Bubble ──────────────────────────────────────
   Widget _buildHeaderAvatar() {
     final image = widget.contactImage.trim();
+    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
     ImageProvider<Object>? imageProvider;
     if (image.startsWith('http')) {
-      imageProvider = NetworkImage(image);
+      imageProvider = NetworkImage(image, headers: imageHeaders);
     } else if (image.isNotEmpty) {
       imageProvider = AssetImage(image);
     }
 
     final initials = widget.contactName.isNotEmpty
         ? widget.contactName
-            .split(' ')
-            .where((part) => part.isNotEmpty)
-            .take(2)
-            .map((part) => part[0].toUpperCase())
-            .join()
+              .split(' ')
+              .where((part) => part.isNotEmpty)
+              .take(2)
+              .map((part) => part[0].toUpperCase())
+              .join()
         : '?';
 
     return CircleAvatar(
@@ -859,8 +994,9 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Row(
-        mainAxisAlignment:
-        msg.isUserMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: msg.isUserMessage
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!msg.isUserMessage) ...[
@@ -884,7 +1020,9 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Container(
                   padding: EdgeInsets.symmetric(
-                      horizontal: 14.w, vertical: 10.h),
+                    horizontal: 14.w,
+                    vertical: 10.h,
+                  ),
                   decoration: BoxDecoration(
                     color: msg.isUserMessage
                         ? AppColors.myBubble
@@ -893,9 +1031,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       topLeft: Radius.circular(16.r),
                       topRight: Radius.circular(16.r),
                       bottomLeft: Radius.circular(
-                          msg.isUserMessage ? 16.r : 4.r),
+                        msg.isUserMessage ? 16.r : 4.r,
+                      ),
                       bottomRight: Radius.circular(
-                          msg.isUserMessage ? 4.r : 16.r),
+                        msg.isUserMessage ? 4.r : 16.r,
+                      ),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -948,8 +1088,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.grey.shade300),
               ),
-              child: Icon(Icons.add,
-                  color: AppColors.textGrey, size: 22.sp),
+              child: Icon(Icons.add, color: AppColors.textGrey, size: 22.sp),
             ),
           ),
           SizedBox(width: 10.w),
@@ -964,7 +1103,9 @@ class _ChatScreenState extends State<ChatScreen> {
               child: TextField(
                 controller: controller.messageController,
                 style: GoogleFonts.poppins(
-                    fontSize: 13.sp, color: AppColors.textDark),
+                  fontSize: 13.sp,
+                  color: AppColors.textDark,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
                   hintStyle: GoogleFonts.poppins(
@@ -1078,5 +1219,4 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
 }
