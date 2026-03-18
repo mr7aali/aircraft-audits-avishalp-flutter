@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:avislap/healper/route.dart';
 import 'package:avislap/services/api_exception.dart';
 import 'package:avislap/services/app_api_service.dart';
@@ -7,6 +9,7 @@ import 'package:avislap/utils/app_text.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 class ProfileTab extends StatefulWidget {
@@ -19,6 +22,7 @@ class ProfileTab extends StatefulWidget {
 class _ProfileTabState extends State<ProfileTab> {
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
+  final ImagePicker _picker = ImagePicker();
   final TextEditingController _firstNameCtrl = TextEditingController();
   final TextEditingController _lastNameCtrl = TextEditingController();
   final TextEditingController _emailCtrl = TextEditingController();
@@ -27,7 +31,10 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isLoggingOut = false;
+  bool _isEditing = false;
   Map<String, dynamic> _profile = const <String, dynamic>{};
+  File? _draftProfileImage;
+  bool _removeProfileImage = false;
 
   void _handleDraftChanged() {
     if (mounted) {
@@ -96,6 +103,119 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
+  Future<void> _showPhotoOptions() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Profile Photo',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.dark,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _BottomSheetAction(
+                  icon: Icons.photo_library_outlined,
+                  title: 'Choose from Gallery',
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _pickProfileImage(ImageSource.gallery);
+                  },
+                ),
+                _BottomSheetAction(
+                  icon: Icons.photo_camera_outlined,
+                  title: 'Take Photo',
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _pickProfileImage(ImageSource.camera);
+                  },
+                ),
+                if (_hasAvatarImage)
+                  _BottomSheetAction(
+                    icon: Icons.delete_outline_rounded,
+                    title: 'Remove Photo',
+                    isDestructive: true,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _removeProfilePhoto();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1800,
+      );
+      if (picked == null || !mounted) {
+        return;
+      }
+
+      setState(() {
+        _draftProfileImage = File(picked.path);
+        _removeProfileImage = false;
+      });
+    } catch (_) {
+      Get.snackbar(
+        'Photo Not Selected',
+        'Unable to access the image picker right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
+  }
+
+  void _removeProfilePhoto() {
+    setState(() {
+      _draftProfileImage = null;
+      _removeProfileImage = true;
+    });
+  }
+
+  void _startEditing() {
+    setState(() => _isEditing = true);
+  }
+
+  void _cancelEditing() {
+    _applyProfile(_profile, persistToSession: false);
+    if (mounted) {
+      setState(() => _isEditing = false);
+    }
+  }
+
   Future<void> _saveProfile() async {
     final firstName = _firstNameCtrl.text.trim();
     final lastName = _lastNameCtrl.text.trim();
@@ -120,13 +240,32 @@ class _ProfileTabState extends State<ProfileTab> {
     setState(() => _isSaving = true);
 
     try {
-      final updated = await _api.updateMyProfile({
+      final payload = <String, dynamic>{
         'firstName': firstName,
         'lastName': lastName,
         'email': email,
         'phone': phone,
-      });
+      };
+
+      if (_draftProfileImage != null) {
+        final uploaded = await _api.uploadFile(
+          _draftProfileImage!,
+          category: 'IMAGE',
+        );
+        final fileId = uploaded['id']?.toString().trim() ?? '';
+        if (fileId.isEmpty) {
+          throw const ApiException(
+            'Unable to upload the selected profile photo.',
+          );
+        }
+        payload['profileImageFileId'] = fileId;
+      } else if (_removeProfileImage) {
+        payload['removeProfileImage'] = true;
+      }
+
+      final updated = await _api.updateMyProfile(payload);
       _applyProfile(updated, persistToSession: true);
+      _isEditing = false;
 
       if (!mounted) {
         return;
@@ -218,12 +357,11 @@ class _ProfileTabState extends State<ProfileTab> {
     _lastNameCtrl.text = (_profile['lastName'] as String?)?.trim() ?? '';
     _emailCtrl.text = (_profile['email'] as String?)?.trim() ?? '';
     _phoneCtrl.text = (_profile['phone'] as String?)?.trim() ?? '';
+    _draftProfileImage = null;
+    _removeProfileImage = false;
 
     if (persistToSession) {
-      final merged = {
-        ...?_session.user,
-        ..._profile,
-      };
+      final merged = {...?_session.user, ..._profile};
       _session.saveUser(merged);
     }
 
@@ -244,7 +382,10 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   String get _initials {
-    final parts = _fullName.split(' ').where((part) => part.isNotEmpty).toList();
+    final parts = _fullName
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .toList();
     if (parts.isEmpty) {
       return '?';
     }
@@ -257,6 +398,40 @@ class _ProfileTabState extends State<ProfileTab> {
 
   String? get _profileImageFileId =>
       (_profile['profileImageFileId'] as String?)?.trim();
+
+  bool get _hasServerImage =>
+      !_removeProfileImage &&
+      _profileImageFileId != null &&
+      _profileImageFileId!.isNotEmpty;
+
+  bool get _hasAvatarImage => _draftProfileImage != null || _hasServerImage;
+
+  bool get _hasPendingChanges {
+    final currentFirstName = _firstNameCtrl.text.trim();
+    final currentLastName = _lastNameCtrl.text.trim();
+    final currentEmail = _emailCtrl.text.trim();
+    final currentPhone = _phoneCtrl.text.trim();
+
+    final savedFirstName = (_profile['firstName'] as String?)?.trim() ?? '';
+    final savedLastName = (_profile['lastName'] as String?)?.trim() ?? '';
+    final savedEmail = (_profile['email'] as String?)?.trim() ?? '';
+    final savedPhone = (_profile['phone'] as String?)?.trim() ?? '';
+
+    return currentFirstName != savedFirstName ||
+        currentLastName != savedLastName ||
+        currentEmail != savedEmail ||
+        currentPhone != savedPhone ||
+        _draftProfileImage != null ||
+        _removeProfileImage;
+  }
+
+  String get _statusLabel {
+    final raw = (_profile['status'] as String?)?.trim() ?? '';
+    if (raw.isEmpty) {
+      return 'ACTIVE';
+    }
+    return raw.replaceAll('_', ' ');
+  }
 
   String get _memberSinceLabel {
     final raw = _profile['createdAt']?.toString();
@@ -324,14 +499,14 @@ class _ProfileTabState extends State<ProfileTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppText(
-          'Profile',
+          'My Profile',
           fontSize: 28,
           fontWeight: FontWeight.bold,
           color: AppColors.dark,
         ),
         const SizedBox(height: 6),
         AppText(
-          'Keep your personal details up to date.',
+          'Update your photo and personal details.',
           fontSize: 14,
           color: AppColors.from_heading,
         ),
@@ -343,17 +518,14 @@ class _ProfileTabState extends State<ProfileTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1D4ED8), Color(0xFF2563EB), Color(0xFF60A5FA)],
-        ),
+        border: Border.all(color: const Color(0xFFE7EDF6)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.mainAppColor.withValues(alpha: 0.20),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -362,7 +534,35 @@ class _ProfileTabState extends State<ProfileTab> {
         children: [
           Row(
             children: [
-              _buildAvatar(size: 72),
+              Stack(
+                children: [
+                  _buildAvatar(size: 84),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: InkWell(
+                      onTap: _isEditing ? _showPhotoOptions : null,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: _isEditing
+                              ? AppColors.mainAppColor
+                              : AppColors.from_heading,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                        ),
+                        child: const Icon(
+                          Icons.edit_outlined,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -373,7 +573,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.dmSans(
-                        color: Colors.white,
+                        color: AppColors.dark,
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                         height: 1.15,
@@ -385,7 +585,7 @@ class _ProfileTabState extends State<ProfileTab> {
                           ? 'User ID: ${_profile['uid']}'
                           : 'Account profile',
                       style: GoogleFonts.dmSans(
-                        color: Colors.white.withValues(alpha: 0.88),
+                        color: AppColors.from_heading,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
@@ -397,19 +597,40 @@ class _ProfileTabState extends State<ProfileTab> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.16),
+                        color: const Color(0xFFEFF4FF),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        (_profile['status'] as String?)?.trim().isNotEmpty ??
-                                false
-                            ? (_profile['status'] as String).replaceAll('_', ' ')
-                            : 'ACTIVE',
+                        _statusLabel,
                         style: GoogleFonts.dmSans(
-                          color: Colors.white,
+                          color: AppColors.mainAppColor,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: _isEditing ? _showPhotoOptions : _startEditing,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.mainAppColor,
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: Icon(
+                        _isEditing
+                            ? Icons.camera_alt_outlined
+                            : Icons.edit_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _isEditing
+                            ? (_hasAvatarImage ? 'Change photo' : 'Add photo')
+                            : 'Edit profile',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -422,24 +643,30 @@ class _ProfileTabState extends State<ProfileTab> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(18),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.email_outlined,
-                  color: Colors.white,
+                Icon(
+                  _draftProfileImage != null
+                      ? Icons.cloud_upload_outlined
+                      : Icons.email_outlined,
+                  color: AppColors.mainAppColor,
                   size: 18,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    _emailCtrl.text.trim().isNotEmpty
+                    _draftProfileImage != null
+                        ? 'New photo selected. Save changes to update it.'
+                        : !_isEditing
+                        ? 'Tap edit profile to update your details.'
+                        : _emailCtrl.text.trim().isNotEmpty
                         ? _emailCtrl.text.trim()
                         : 'No email available',
                     style: GoogleFonts.dmSans(
-                      color: Colors.white,
+                      color: AppColors.dark,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -502,73 +729,157 @@ class _ProfileTabState extends State<ProfileTab> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Update your core account information here.',
+            _isEditing
+                ? 'Update your core account information here.'
+                : 'View your current account information.',
             style: GoogleFonts.dmSans(
               fontSize: 13,
               color: AppColors.from_heading,
             ),
           ),
           const SizedBox(height: 18),
-          _buildField(
-            label: 'First Name',
-            controller: _firstNameCtrl,
-            icon: Icons.person_outline,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 14),
-          _buildField(
-            label: 'Last Name',
-            controller: _lastNameCtrl,
-            icon: Icons.badge_outlined,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 14),
-          _buildField(
-            label: 'Email',
-            controller: _emailCtrl,
-            icon: Icons.alternate_email,
-            keyboardType: TextInputType.emailAddress,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 14),
-          _buildField(
-            label: 'Phone',
-            controller: _phoneCtrl,
-            icon: Icons.phone_outlined,
-            keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.done,
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _isSaving ? null : _saveProfile,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.mainAppColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          if (_isEditing) ...[
+            _buildField(
+              label: 'First Name',
+              controller: _firstNameCtrl,
+              icon: Icons.person_outline,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 14),
+            _buildField(
+              label: 'Last Name',
+              controller: _lastNameCtrl,
+              icon: Icons.badge_outlined,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 14),
+            _buildField(
+              label: 'Email',
+              controller: _emailCtrl,
+              icon: Icons.alternate_email,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 14),
+            _buildField(
+              label: 'Phone',
+              controller: _phoneCtrl,
+              icon: Icons.phone_outlined,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isSaving ? null : _cancelEditing,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: AppColors.mainAppColor.withValues(alpha: 0.18),
                       ),
-                    )
-                  : Text(
-                      'Save Changes',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
                       ),
                     ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.mainAppColor,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _hasPendingChanges && !_isSaving
+                        ? _saveProfile
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.mainAppColor,
+                      disabledBackgroundColor: const Color(0xFFD7E0F3),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            'Save Changes',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
             ),
-          ),
+          ] else ...[
+            _buildDisplayRow(
+              label: 'First Name',
+              value: _firstNameCtrl.text.trim(),
+              icon: Icons.person_outline,
+            ),
+            const SizedBox(height: 14),
+            _buildDisplayRow(
+              label: 'Last Name',
+              value: _lastNameCtrl.text.trim(),
+              icon: Icons.badge_outlined,
+            ),
+            const SizedBox(height: 14),
+            _buildDisplayRow(
+              label: 'Email',
+              value: _emailCtrl.text.trim(),
+              icon: Icons.alternate_email,
+            ),
+            const SizedBox(height: 14),
+            _buildDisplayRow(
+              label: 'Phone',
+              value: _phoneCtrl.text.trim().isEmpty
+                  ? 'Not added yet'
+                  : _phoneCtrl.text.trim(),
+              icon: Icons.phone_outlined,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _startEditing,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.mainAppColor,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                icon: const Icon(Icons.edit_outlined, color: Colors.white),
+                label: Text(
+                  'Edit Details',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -590,6 +901,16 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
       child: Column(
         children: [
+          _ActionTile(
+            icon: _isEditing ? Icons.close_rounded : Icons.edit_rounded,
+            title: _isEditing ? 'Cancel Editing' : 'Edit Profile',
+            subtitle: _isEditing
+                ? 'Discard the current draft and return to view mode.'
+                : 'Switch to edit mode to update your details.',
+            onTap: _isEditing
+                ? (_isSaving ? null : _cancelEditing)
+                : _startEditing,
+          ),
           _ActionTile(
             icon: Icons.refresh_rounded,
             title: 'Refresh Profile',
@@ -630,7 +951,7 @@ class _ProfileTabState extends State<ProfileTab> {
           style: GoogleFonts.dmSans(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: AppColors.mainAppColor,
+            color: AppColors.dark,
           ),
         ),
         const SizedBox(height: 8),
@@ -660,7 +981,7 @@ class _ProfileTabState extends State<ProfileTab> {
               borderRadius: BorderRadius.circular(18),
               borderSide: const BorderSide(
                 color: AppColors.mainAppColor,
-                width: 1.4,
+                width: 1.2,
               ),
             ),
           ),
@@ -674,22 +995,80 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Widget _buildAvatar({required double size}) {
-    final fileId = _profileImageFileId;
-    final hasImage = fileId != null && fileId.isNotEmpty;
+  Widget _buildDisplayRow({
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8EDF5)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppColors.mainAppColor, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.from_heading,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.dark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildAvatar({required double size}) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha: 0.22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+        color: const Color(0xFFE8EEF9),
+        border: Border.all(
+          color: AppColors.mainAppColor.withValues(alpha: 0.10),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasImage
+      child: _draftProfileImage != null
+          ? Image.file(
+              _draftProfileImage!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _buildAvatarFallback(),
+            )
+          : _hasServerImage
           ? Image.network(
-              _api.buildFileContentUrl(fileId),
+              _api.buildFileContentUrl(_profileImageFileId!),
               headers: _api.buildImageHeaders(),
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => _buildAvatarFallback(),
@@ -703,7 +1082,7 @@ class _ProfileTabState extends State<ProfileTab> {
       child: Text(
         _initials,
         style: GoogleFonts.dmSans(
-          color: Colors.white,
+          color: AppColors.mainAppColor,
           fontSize: 24,
           fontWeight: FontWeight.w700,
         ),
@@ -817,6 +1196,47 @@ class _ActionTile extends StatelessWidget {
       trailing:
           trailing ??
           Icon(Icons.chevron_right_rounded, color: AppColors.from_heading),
+      onTap: onTap,
+    );
+  }
+}
+
+class _BottomSheetAction extends StatelessWidget {
+  const _BottomSheetAction({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.isDestructive = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+  final bool isDestructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isDestructive ? AppColors.red : AppColors.dark;
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      title: Text(
+        title,
+        style: GoogleFonts.dmSans(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
       onTap: onTap,
     );
   }

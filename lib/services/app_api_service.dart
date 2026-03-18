@@ -11,11 +11,9 @@ import 'api_exception.dart';
 import 'session_service.dart';
 
 class AppApiService {
-  AppApiService({
-    http.Client? client,
-    SessionService? sessionService,
-  }) : _client = client ?? http.Client(),
-       _sessionService = sessionService ?? Get.find<SessionService>();
+  AppApiService({http.Client? client, SessionService? sessionService})
+    : _client = client ?? http.Client(),
+      _sessionService = sessionService ?? Get.find<SessionService>();
 
   final http.Client _client;
   final SessionService _sessionService;
@@ -29,8 +27,8 @@ class AppApiService {
 
     final defaultHost =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-            ? 'http://10.0.2.2:3000/api'
-            : 'http://localhost:3000/api';
+        ? 'http://10.0.2.2:3000/api'
+        : 'http://localhost:3000/api';
     return _normalizeBaseUrl(defaultHost);
   }
 
@@ -38,10 +36,7 @@ class AppApiService {
     return value.endsWith('/') ? value : '$value/';
   }
 
-  Uri buildUri(
-    String endpoint, {
-    Map<String, dynamic>? queryParameters,
-  }) {
+  Uri buildUri(String endpoint, {Map<String, dynamic>? queryParameters}) {
     final baseUri = Uri.parse(baseUrl);
     final uri = baseUri.resolve(endpoint);
     final normalizedQuery = <String, String>{};
@@ -93,11 +88,7 @@ class AppApiService {
     final data = await _send(
       'POST',
       'auth/login',
-      body: {
-        'userId': userId,
-        'password': password,
-        'rememberMe': rememberMe,
-      },
+      body: {'userId': userId, 'password': password, 'rememberMe': rememberMe},
       authenticated: false,
       retryOnUnauthorized: false,
     );
@@ -175,10 +166,7 @@ class AppApiService {
     return _send(
       'POST',
       'auth/forgot-password/confirm',
-      body: {
-        'token': token,
-        'newPassword': newPassword,
-      },
+      body: {'token': token, 'newPassword': newPassword},
       authenticated: false,
       retryOnUnauthorized: false,
     );
@@ -229,7 +217,10 @@ class AppApiService {
   }
 
   Future<List<Map<String, dynamic>>> getCabinQualityChecklistItems() async {
-    final data = await _send('GET', 'master-data/cabin-quality-checklist-items');
+    final data = await _send(
+      'GET',
+      'master-data/cabin-quality-checklist-items',
+    );
     return _asListOfMaps(data);
   }
 
@@ -283,11 +274,7 @@ class AppApiService {
   Future<Map<String, dynamic>> createCabinQualityAudit(
     Map<String, dynamic> payload,
   ) async {
-    final data = await _send(
-      'POST',
-      'cabin-quality-audits',
-      body: payload,
-    );
+    final data = await _send('POST', 'cabin-quality-audits', body: payload);
     return _asMap(data);
   }
 
@@ -310,11 +297,7 @@ class AppApiService {
   Future<Map<String, dynamic>> createLavSafetyObservation(
     Map<String, dynamic> payload,
   ) async {
-    final data = await _send(
-      'POST',
-      'lav-safety-observations',
-      body: payload,
-    );
+    final data = await _send('POST', 'lav-safety-observations', body: payload);
     return _asMap(data);
   }
 
@@ -354,6 +337,15 @@ class AppApiService {
     return _asListOfMaps(data);
   }
 
+  Future<List<Map<String, dynamic>>> listChatUsers({String? query}) async {
+    final data = await _send(
+      'GET',
+      'employees/chat-users',
+      queryParameters: {'q': query},
+    );
+    return _asListOfMaps(data);
+  }
+
   Future<List<Map<String, dynamic>>> listConversations({
     String? tab,
     String? query,
@@ -361,12 +353,18 @@ class AppApiService {
     final data = await _send(
       'GET',
       'chat/conversations',
-      queryParameters: {
-        'tab': tab,
-        'q': query,
-      },
+      queryParameters: {'tab': tab, 'q': query},
     );
     return _asListOfMaps(data);
+  }
+
+  Future<Map<String, dynamic>> createDirectConversation(String userId) async {
+    final data = await _send(
+      'POST',
+      'chat/conversations/direct',
+      body: {'userId': userId},
+    );
+    return _asMap(data);
   }
 
   Future<Map<String, dynamic>> getConversation(String id) async {
@@ -382,10 +380,7 @@ class AppApiService {
     final data = await _send(
       'GET',
       'chat/conversations/$id/messages',
-      queryParameters: {
-        'cursor': cursor,
-        'limit': limit,
-      },
+      queryParameters: {'cursor': cursor, 'limit': limit},
     );
     return _asMap(data);
   }
@@ -619,9 +614,7 @@ class AppApiService {
       return value;
     }
     if (value is Map) {
-      return value.map(
-        (key, entry) => MapEntry(key.toString(), entry),
-      );
+      return value.map((key, entry) => MapEntry(key.toString(), entry));
     }
     return <String, dynamic>{};
   }
