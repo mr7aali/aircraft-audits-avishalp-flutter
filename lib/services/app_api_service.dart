@@ -135,6 +135,18 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> getMyProfile() async {
+    final data = await _send('GET', 'profile');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile(
+    Map<String, dynamic> payload,
+  ) async {
+    final data = await _send('PATCH', 'profile', body: payload);
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> requestForgotPassword(String email) async {
     final data = await _send(
       'POST',

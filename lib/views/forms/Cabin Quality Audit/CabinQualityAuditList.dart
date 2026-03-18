@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
+import '../../../services/session_service.dart';
 import 'CabinQualityAuditScreen.dart';
 
 // =====================
@@ -32,7 +33,7 @@ class _Colors {
 class CabinAuditItem {
   final String id;
   final String observerName;
-  final String observerImage;
+  final String? observerImage;
   final String date;
   final String time;
   final String gate;
@@ -42,20 +43,20 @@ class CabinAuditItem {
   /// RAD – Remain All Day | RON – Remain Over Night | Security Search
   final String type;
 
-  final String locationImage;
-  final String locationImage2;
+  final String? locationImage;
+  final String? locationImage2;
   final String? bottomAvatarImage;
 
   CabinAuditItem({
     required this.id,
     required this.observerName,
-    required this.observerImage,
+    this.observerImage,
     required this.date,
     required this.time,
     required this.gate,
     required this.type,
-    required this.locationImage,
-    required this.locationImage2,
+    this.locationImage,
+    this.locationImage2,
     this.bottomAvatarImage,
   });
 }
@@ -65,6 +66,7 @@ class CabinAuditItem {
 // =====================
 class CabinQualityAuditListController extends GetxController {
   final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
   final RxList<CabinAuditItem> audits = <CabinAuditItem>[].obs;
   final RxBool isLoading = true.obs;
 
@@ -117,6 +119,8 @@ class CabinQualityAuditListController extends GetxController {
     final auditAt = DateTime.tryParse(
       item['auditAt']?.toString() ?? '',
     )?.toLocal();
+    final profileImageFileId =
+        (_session.user?['profileImageFileId'] as String?)?.trim() ?? '';
     final thumbnails = List<dynamic>.from(item['thumbnails'] as List? ?? const []);
     final thumbnailUrls = thumbnails
         .map((entry) => entry.toString())
@@ -127,17 +131,19 @@ class CabinQualityAuditListController extends GetxController {
     return CabinAuditItem(
       id: item['id']?.toString() ?? '',
       observerName: (item['auditorName'] as String?)?.trim() ?? 'Unknown',
-      observerImage: 'assets/images/nirob.jpg',
+      observerImage: profileImageFileId.isEmpty
+          ? null
+          : _api.buildFileContentUrl(profileImageFileId),
       date: auditAt == null ? '' : DateFormat('MMM d, y').format(auditAt),
       time: auditAt == null ? '' : DateFormat('h:mm a').format(auditAt),
       gate: _formatGateLabel(item['gateCode']?.toString() ?? ''),
       type: (item['cleanType'] as String?)?.trim() ?? '',
       locationImage: thumbnailUrls.isNotEmpty
           ? thumbnailUrls.first
-          : 'assets/images/indor.png',
+          : null,
       locationImage2: thumbnailUrls.length > 1
           ? thumbnailUrls[1]
-          : 'assets/images/window.png',
+          : null,
     );
   }
 
@@ -303,7 +309,8 @@ class _CabinQualityAuditListScreenState
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: controller.audits.length,
-        separatorBuilder: (_, __) => Divider(height: 1, color: _Colors.divider),
+        separatorBuilder: (context, index) =>
+            Divider(height: 1, color: _Colors.divider),
         itemBuilder: (context, index) {
           return _buildAuditCard(controller.audits[index]);
         },
@@ -332,12 +339,7 @@ class _CabinQualityAuditListScreenState
                     shape: BoxShape.circle,
                     border: Border.all(color: _Colors.primary, width: 2.5.w),
                   ),
-                  child: CircleAvatar(
-                    radius: 26.r,
-                    backgroundImage: AssetImage(item.observerImage),
-                    backgroundColor: Colors.grey.shade200,
-                    onBackgroundImageError: (_, __) {},
-                  ),
+                  child: _buildObserverAvatar(item),
                 ),
                 Positioned(
                   right: 2,
@@ -448,7 +450,7 @@ class _CabinQualityAuditListScreenState
                           radius: 12.r,
                           backgroundImage: AssetImage(item.bottomAvatarImage!),
                           backgroundColor: Colors.grey.shade200,
-                          onBackgroundImageError: (_, __) {},
+                          onBackgroundImageError: (exception, stackTrace) {},
                         ),
                       ),
                   ],
@@ -462,27 +464,70 @@ class _CabinQualityAuditListScreenState
   }
 
   // ── Location Image ───────────────────────────────────────
-  Widget _buildLocationImage(String imagePath) {
+  Widget _buildLocationImage(String? imagePath) {
     final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
+    final resolvedPath = imagePath?.trim() ?? '';
+
+    if (resolvedPath.isEmpty) {
+      return _buildMissingImage();
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(8.r),
-      child: imagePath.startsWith('http')
+      child: resolvedPath.startsWith('http')
           ? Image.network(
-              imagePath,
+              resolvedPath,
               width: 64.w,
               height: 56.h,
               fit: BoxFit.cover,
               headers: imageHeaders,
-              errorBuilder: (_, __, ___) => _buildMissingImage(),
+              errorBuilder: (context, error, stackTrace) =>
+                  _buildMissingImage(),
             )
-          : Image.asset(
-              imagePath,
-              width: 64.w,
-              height: 56.h,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildMissingImage(),
-            ),
+          : _buildMissingImage(),
+    );
+  }
+
+  Widget _buildObserverAvatar(CabinAuditItem item) {
+    final imageUrl = item.observerImage?.trim() ?? '';
+    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
+
+    if (imageUrl.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          imageUrl,
+          width: 52.r,
+          height: 52.r,
+          fit: BoxFit.cover,
+          headers: imageHeaders,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildObserverInitials(item),
+        ),
+      );
+    }
+
+    return _buildObserverInitials(item);
+  }
+
+  Widget _buildObserverInitials(CabinAuditItem item) {
+    final initials = item.observerName
+        .split(' ')
+        .where((part) => part.trim().isNotEmpty)
+        .take(2)
+        .map((part) => part.trim()[0].toUpperCase())
+        .join();
+
+    return CircleAvatar(
+      radius: 26.r,
+      backgroundColor: const Color(0xFFE8EEFF),
+      child: Text(
+        initials.isEmpty ? '?' : initials,
+        style: GoogleFonts.poppins(
+          fontSize: 18.sp,
+          fontWeight: FontWeight.w700,
+          color: _Colors.primary,
+        ),
+      ),
     );
   }
 
