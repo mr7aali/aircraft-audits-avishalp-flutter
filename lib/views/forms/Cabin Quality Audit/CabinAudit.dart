@@ -532,11 +532,13 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
         _api.getGates(stationId),
         _api.getCleanTypes(),
         _api.getCabinQualityChecklistItems(),
+        _api.getAircraftTypes(),
       ]);
 
       final gates = List<Map<String, dynamic>>.from(results[0]);
       final cleanTypes = List<Map<String, dynamic>>.from(results[1]);
       final checklist = List<Map<String, dynamic>>.from(results[2]);
+      final aircraftTypes = List<Map<String, dynamic>>.from(results[3]);
 
       _gateIdsByLabel.clear();
       _ctrl.gateOptions.clear();
@@ -569,6 +571,25 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       }
       if (_ctrl.cleanTypeOptions.isNotEmpty) {
         _ctrl.selectedCleanType.value = _ctrl.cleanTypeOptions.first;
+      }
+
+      final supportedAircrafts = _ctrl.aircraftMaps.keys.toSet();
+      final syncedAircrafts = aircraftTypes
+          .map((aircraft) => aircraft['name']?.toString().trim() ?? '')
+          .where(
+            (name) => name.isNotEmpty && supportedAircrafts.contains(name),
+          )
+          .toSet()
+          .toList();
+
+      if (syncedAircrafts.isNotEmpty) {
+        _ctrl.aircraftOptions
+          ..clear()
+          ..addAll(syncedAircrafts);
+      }
+      if (_ctrl.aircraftOptions.isNotEmpty &&
+          !_ctrl.aircraftOptions.contains(_ctrl.selectedAircraft.value)) {
+        _ctrl.selectedAircraft.value = _ctrl.aircraftOptions.first;
       }
 
       _checklistIdsByLabel.clear();

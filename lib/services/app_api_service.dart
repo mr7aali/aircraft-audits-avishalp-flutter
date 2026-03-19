@@ -216,6 +216,11 @@ class AppApiService {
     return _asListOfMaps(data);
   }
 
+  Future<List<Map<String, dynamic>>> getAircraftTypes() async {
+    final data = await _send('GET', 'master-data/aircraft-types');
+    return _asListOfMaps(data);
+  }
+
   Future<List<Map<String, dynamic>>> getCabinQualityChecklistItems() async {
     final data = await _send(
       'GET',

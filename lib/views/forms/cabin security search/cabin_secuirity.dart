@@ -863,10 +863,12 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       final results = await Future.wait([
         _api.getGates(stationId),
         _api.getSecuritySearchAreas(),
+        _api.getAircraftTypes(),
       ]);
 
       final gates = List<Map<String, dynamic>>.from(results[0]);
       final areas = List<Map<String, dynamic>>.from(results[1]);
+      final aircraftTypes = List<Map<String, dynamic>>.from(results[2]);
 
       final gateLabels = <String>['Please Select One'];
       _gateIdsByLabel.clear();
@@ -900,6 +902,25 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         ..addAll(gateLabels);
       if (!_ctrl.gateOptions.contains(_ctrl.selectedGate.value)) {
         _ctrl.selectedGate.value = 'Please Select One';
+      }
+
+      final supportedAircrafts = _ctrl.aircraftMaps.keys.toSet();
+      final syncedAircrafts = aircraftTypes
+          .map((aircraft) => aircraft['name']?.toString().trim() ?? '')
+          .where(
+            (name) => name.isNotEmpty && supportedAircrafts.contains(name),
+          )
+          .toSet()
+          .toList();
+
+      if (syncedAircrafts.isNotEmpty) {
+        _ctrl.aircraftOptions
+          ..clear()
+          ..addAll(syncedAircrafts);
+      }
+      if (_ctrl.aircraftOptions.isNotEmpty &&
+          !_ctrl.aircraftOptions.contains(_ctrl.selectedAircraft.value)) {
+        _ctrl.selectedAircraft.value = _ctrl.aircraftOptions.first;
       }
 
       if (areaLabels.isNotEmpty) {

@@ -152,9 +152,7 @@ class _LoginScreenState extends State<LoginScreen>
             ? profile['user'] as Map<String, dynamic>
             : null,
       );
-
-      final activeStation = await _api.getActiveStation();
-      _session.saveActiveStation(activeStation);
+      _session.saveActiveStation(null);
 
       if (!mounted) {
         return;
@@ -163,6 +161,7 @@ class _LoginScreenState extends State<LoginScreen>
       Get.off(
         () => StationSelectionScreen(
           userName: _session.firstName,
+          forceReselect: true,
         ),
       );
     } on ApiException catch (error) {

@@ -13,7 +13,6 @@ class _C {
   static const Color blue = Color(0xFF3D5AFE);
   static const Color ink = Color(0xFF0E0E10);
   static const Color border = Color(0xFFEAECF2);
-  static const Color placeholder = Color(0xFFC8CDD9);
   static const Color muted = Color(0xFF8891A4);
 }
 
@@ -29,10 +28,12 @@ class _StationOption {
 
 class StationSelectionScreen extends StatefulWidget {
   final String userName;
+  final bool forceReselect;
 
   const StationSelectionScreen({
     super.key,
     this.userName = '',
+    this.forceReselect = false,
   });
 
   @override
@@ -44,7 +45,6 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
   final SessionService _session = Get.find<SessionService>();
 
   String? _selectedStationId;
-  String? _selectedStationLabel;
   bool _isLoading = true;
   bool _isSubmitting = false;
   List<_StationOption> _stations = const <_StationOption>[];
@@ -70,7 +70,12 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
 
     try {
       final stations = await _api.getMyStations();
-      final activeStation = await _api.getActiveStation();
+      Map<String, dynamic>? activeStation;
+      if (!widget.forceReselect) {
+        activeStation = await _api.getActiveStation();
+      } else {
+        _session.saveActiveStation(null);
+      }
 
       final mappedStations = stations.map((station) {
         final code = (station['stationCode'] as String?)?.trim() ?? '';
@@ -81,12 +86,12 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
 
         return _StationOption(
           id: (station['stationId'] as String?) ?? '',
-          label: label.isEmpty ? 'Assigned Station' : label,
+          label: label.isEmpty ? 'Station' : label,
         );
       }).where((station) => station.id.isNotEmpty).toList();
 
-      String preselectedId = _session.activeStationId;
-      if (preselectedId.isEmpty && activeStation != null) {
+      String preselectedId = widget.forceReselect ? '' : _session.activeStationId;
+      if (!widget.forceReselect && preselectedId.isEmpty && activeStation != null) {
         preselectedId = (activeStation['stationId'] as String?) ?? '';
       }
 
@@ -104,12 +109,11 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
         setState(() {
           _stations = mappedStations;
           _selectedStationId = preselected?.id;
-          _selectedStationLabel = preselected?.label;
           _isLoading = false;
         });
       }
 
-      if (mappedStations.length == 1 && mounted) {
+      if (!widget.forceReselect && mappedStations.length == 1 && mounted) {
         await _continueWithStation(mappedStations.first);
       }
     } on ApiException catch (error) {
@@ -131,7 +135,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
       setState(() => _isLoading = false);
       Get.snackbar(
         'Stations Unavailable',
-        'Unable to load the assigned stations right now.',
+        'Unable to load the stations right now.',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
@@ -205,19 +209,6 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
         setState(() => _isSubmitting = false);
       }
     }
-  }
-
-  void _showStationPicker() {
-    if (_isLoading || _stations.isEmpty) {
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _buildStationSheet(),
-    );
   }
 
   @override
@@ -297,51 +288,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                     ),
                   ),
                   SizedBox(height: 14.h),
-                  GestureDetector(
-                    onTap: _showStationPicker,
-                    child: Container(
-                      height: 52.h,
-                      padding: EdgeInsets.symmetric(horizontal: 18.w),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(30.r),
-                        border: Border.all(color: _C.border, width: 1.5),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _isLoading
-                                  ? 'Loading your stations...'
-                                  : _selectedStationLabel ??
-                                      (_stations.isEmpty
-                                          ? 'No assigned stations'
-                                          : 'Select your station'),
-                              style: GoogleFonts.dmSans(
-                                fontSize: 14.sp,
-                                color: _selectedStationLabel != null
-                                    ? _C.ink
-                                    : _C.placeholder,
-                              ),
-                            ),
-                          ),
-                          _isLoading
-                              ? SizedBox(
-                                  width: 18.w,
-                                  height: 18.w,
-                                  child: const CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.search,
-                                  color: _C.muted,
-                                  size: 20.sp,
-                                ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _buildStationList(),
                   SizedBox(height: 16.h),
                   GestureDetector(
                     onTap: (_isLoading || _stations.isEmpty || _isSubmitting)
@@ -390,75 +337,148 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
     );
   }
 
-  Widget _buildStationSheet() {
+  Widget _buildStationList() {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+      constraints: BoxConstraints(
+        minHeight: 86.h,
+        maxHeight: 260.h,
       ),
-      padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 32.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(22.r),
+        border: Border.all(color: _C.border, width: 1.3),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40.w,
-            height: 4.h,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(2.r),
-            ),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            'Select Station',
-            style: GoogleFonts.dmSans(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-              color: _C.ink,
-            ),
+          Row(
+            children: [
+              Icon(Icons.location_on_outlined, color: _C.blue, size: 18.sp),
+              SizedBox(width: 8.w),
+              Text(
+                'Stations',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: _C.ink,
+                ),
+              ),
+            ],
           ),
           SizedBox(height: 12.h),
-          ..._stations.map(
-            (station) => GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedStationId = station.id;
-                  _selectedStationLabel = station.label;
-                });
-                Get.back();
-              },
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  vertical: 14.h,
-                  horizontal: 16.w,
+          if (_isLoading)
+            SizedBox(
+              height: 52.h,
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+            )
+          else if (_stations.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 16.h),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Text(
+                'No stations found right now.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13.sp,
+                  color: _C.muted,
                 ),
-                margin: EdgeInsets.only(bottom: 8.h),
-                decoration: BoxDecoration(
-                  color: _selectedStationId == station.id
-                      ? _C.blue.withValues(alpha: 0.08)
-                      : const Color(0xFFF7F8FC),
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(
-                    color: _selectedStationId == station.id
-                        ? _C.blue.withValues(alpha: 0.4)
-                        : Colors.transparent,
-                    width: 1.5,
-                  ),
-                ),
-                child: Text(
-                  station.label,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14.sp,
-                    color: _selectedStationId == station.id ? _C.blue : _C.ink,
-                    fontWeight: _selectedStationId == station.id
-                        ? FontWeight.w600
-                        : FontWeight.w400,
-                  ),
+              ),
+            )
+          else
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: _stations
+                      .map(
+                        (station) => GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedStationId = station.id;
+                            });
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.symmetric(
+                              vertical: 14.h,
+                              horizontal: 16.w,
+                            ),
+                            margin: EdgeInsets.only(bottom: 10.h),
+                            decoration: BoxDecoration(
+                              color: _selectedStationId == station.id
+                                  ? _C.blue.withValues(alpha: 0.08)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(18.r),
+                              border: Border.all(
+                                color: _selectedStationId == station.id
+                                    ? _C.blue.withValues(alpha: 0.45)
+                                    : _C.border,
+                                width: _selectedStationId == station.id ? 1.6 : 1.1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.03),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40.w,
+                                  height: 40.w,
+                                  decoration: BoxDecoration(
+                                    color: _selectedStationId == station.id
+                                        ? _C.blue
+                                        : const Color(0xFFEFF3FF),
+                                    borderRadius: BorderRadius.circular(12.r),
+                                  ),
+                                  child: Icon(
+                                    Icons.flight_takeoff_rounded,
+                                    color: _selectedStationId == station.id
+                                        ? Colors.white
+                                        : _C.blue,
+                                    size: 18.sp,
+                                  ),
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Text(
+                                    station.label,
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 14.sp,
+                                      color: _selectedStationId == station.id
+                                          ? _C.blue
+                                          : _C.ink,
+                                      fontWeight: _selectedStationId == station.id
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                if (_selectedStationId == station.id)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    color: _C.blue,
+                                    size: 20.sp,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
