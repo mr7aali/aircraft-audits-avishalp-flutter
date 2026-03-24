@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:signature/signature.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../data/seat_map_config.dart' as seat_map_config;
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
 import '../../../services/session_service.dart';
@@ -339,11 +340,9 @@ class CabinQualityController extends GetxController {
   final sec2Expanded = true.obs;
   final sec3Expanded = true.obs;
 
-  final List<String> aircraftOptions = [
-    'Boeing 757-300 (75Y)',
-    'Boeing 737-800',
-    'Airbus A320',
-  ];
+  final List<String> aircraftOptions = List<String>.from(
+    seat_map_config.defaultAircraftSeatMaps.keys,
+  );
 
   final List<String> gateOptions = [
     'Please Select One',
@@ -369,7 +368,7 @@ class CabinQualityController extends GetxController {
     'All',
   ];
 
-  late final Map<String, AircraftSeatMap> aircraftMaps;
+  Map<String, AircraftSeatMap> aircraftMaps = <String, AircraftSeatMap>{};
 
   bool get isFormValid {
     if (selectedGate.value == 'Please Select One') return false;
@@ -605,172 +604,61 @@ class CabinQualityController extends GetxController {
   }
 
   void _initAircraftMaps() {
-    aircraftMaps = {
-      'Boeing 757-300 (75Y)': AircraftSeatMap(
-        name: 'Boeing 757-300 (75Y)',
-        hasFirstClassArc: true,
-        sections: [
-          SeatSection(
-            name: 'First Class',
-            startRow: 1,
-            endRow: 6,
-            leftCols: ['A', 'B'],
-            rightCols: ['C', 'D'],
-            amenitiesBefore: [
-              AmenityRow(
-                leftSvg: 'assets/icons/toilet.svg',
-                leftId: 'LAV FWD',
-                rightSvg: 'assets/icons/chiken.svg',
-                rightId: 'Galley FWD',
-              ),
-            ],
-            hasExitBefore: true,
-            amenitiesAfter: [
-              AmenityRow(customLabel: 'Closet'),
-              AmenityRow(
-                leftSvg: 'assets/icons/toilet.svg',
-                leftId: 'LAV MID L',
-                rightSvg: 'assets/icons/toilet.svg',
-                rightId: 'LAV MID R',
-              ),
-            ],
-          ),
-          SeatSection(
-            name: 'Delta Comfort',
-            startRow: 14,
-            endRow: 21,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            hasExitBefore: true,
-            skipRows: [14],
-          ),
-          SeatSection(
-            name: 'Delta Main',
-            startRow: 22,
-            endRow: 40,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            amenitiesAfter: [
-              AmenityRow(
-                leftSvg: 'assets/icons/toilet.svg',
-                leftId: 'LAV AFT L',
-                rightSvg: 'assets/icons/toilet.svg',
-                rightId: 'LAV AFT R',
-              ),
-            ],
-            hasExitAfter: true,
-          ),
-          SeatSection(
-            name: '',
-            startRow: 41,
-            endRow: 49,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            amenitiesAfter: [
-              AmenityRow(
-                rightSvg: 'assets/icons/chiken.svg',
-                rightId: 'Galley AFT',
-                centerOnly: true,
-              ),
-            ],
-            hasExitAfter: true,
-          ),
-        ],
+    aircraftMaps = _convertSeatMaps(seat_map_config.defaultAircraftSeatMaps);
+  }
+
+  Map<String, AircraftSeatMap> _convertSeatMaps(
+    Map<String, seat_map_config.AircraftSeatMap> source,
+  ) {
+    return source.map(
+      (key, value) => MapEntry(
+        key,
+        AircraftSeatMap(
+          name: value.name,
+          hasFirstClassArc: value.hasFirstClassArc,
+          sections: value.sections
+              .map(
+                (section) => SeatSection(
+                  name: section.name,
+                  startRow: section.startRow,
+                  endRow: section.endRow,
+                  leftCols: List<String>.from(section.leftCols),
+                  rightCols: List<String>.from(section.rightCols),
+                  hasExitBefore: section.hasExitBefore,
+                  hasExitAfter: section.hasExitAfter,
+                  amenitiesBefore: section.amenitiesBefore
+                      ?.map(
+                        (amenity) => AmenityRow(
+                          leftSvg: amenity.leftSvg,
+                          leftId: amenity.leftId,
+                          rightSvg: amenity.rightSvg,
+                          rightId: amenity.rightId,
+                          centerOnly: amenity.centerOnly,
+                          customLabel: amenity.customLabel,
+                        ),
+                      )
+                      .toList(),
+                  amenitiesAfter: section.amenitiesAfter
+                      ?.map(
+                        (amenity) => AmenityRow(
+                          leftSvg: amenity.leftSvg,
+                          leftId: amenity.leftId,
+                          rightSvg: amenity.rightSvg,
+                          rightId: amenity.rightId,
+                          centerOnly: amenity.centerOnly,
+                          customLabel: amenity.customLabel,
+                        ),
+                      )
+                      .toList(),
+                  skipRows: section.skipRows == null
+                      ? null
+                      : List<int>.from(section.skipRows!),
+                ),
+              )
+              .toList(),
+        ),
       ),
-      'Boeing 737-800': AircraftSeatMap(
-        name: 'Boeing 737-800',
-        sections: [
-          SeatSection(
-            name: 'First Class',
-            startRow: 1,
-            endRow: 4,
-            leftCols: ['A', 'B'],
-            rightCols: ['C', 'D'],
-            amenitiesBefore: [
-              AmenityRow(
-                leftSvg: 'assets/icons/toilet.svg',
-                leftId: 'LAV FWD',
-                rightSvg: 'assets/icons/chiken.svg',
-                rightId: 'Galley FWD',
-              ),
-            ],
-            hasExitBefore: true,
-          ),
-          SeatSection(
-            name: 'Main Cabin',
-            startRow: 7,
-            endRow: 20,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            hasExitBefore: true,
-          ),
-          SeatSection(
-            name: '',
-            startRow: 21,
-            endRow: 33,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            hasExitAfter: true,
-            amenitiesAfter: [
-              AmenityRow(
-                leftSvg: 'assets/icons/toilet.svg',
-                leftId: 'LAV AFT L',
-                rightSvg: 'assets/icons/toilet.svg',
-                rightId: 'LAV AFT R',
-              ),
-              AmenityRow(
-                rightSvg: 'assets/icons/chiken.svg',
-                rightId: 'Galley AFT',
-                centerOnly: true,
-              ),
-            ],
-          ),
-        ],
-      ),
-      'Airbus A320': AircraftSeatMap(
-        name: 'Airbus A320',
-        sections: [
-          SeatSection(
-            name: 'Business Class',
-            startRow: 1,
-            endRow: 3,
-            leftCols: ['A', 'B'],
-            rightCols: ['C', 'D'],
-            amenitiesBefore: [
-              AmenityRow(
-                rightSvg: 'assets/icons/chiken.svg',
-                rightId: 'Galley FWD',
-                centerOnly: true,
-              ),
-            ],
-          ),
-          SeatSection(
-            name: 'Economy',
-            startRow: 8,
-            endRow: 18,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            hasExitBefore: true,
-          ),
-          SeatSection(
-            name: '',
-            startRow: 19,
-            endRow: 30,
-            leftCols: ['A', 'B', 'C'],
-            rightCols: ['D', 'E', 'F'],
-            hasExitAfter: true,
-            amenitiesAfter: [
-              AmenityRow(
-                leftSvg: 'assets/icons/toilet.svg',
-                leftId: 'LAV L',
-                rightSvg: 'assets/icons/toilet.svg',
-                rightId: 'LAV R',
-              ),
-            ],
-          ),
-        ],
-      ),
-    };
+    );
   }
 
   @override
@@ -904,19 +792,14 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         _ctrl.selectedGate.value = 'Please Select One';
       }
 
-      final supportedAircrafts = _ctrl.aircraftMaps.keys.toSet();
-      final syncedAircrafts = aircraftTypes
-          .map((aircraft) => aircraft['name']?.toString().trim() ?? '')
-          .where(
-            (name) => name.isNotEmpty && supportedAircrafts.contains(name),
-          )
-          .toSet()
-          .toList();
-
-      if (syncedAircrafts.isNotEmpty) {
+      final syncedAircraftMaps = _ctrl._convertSeatMaps(
+        seat_map_config.buildAircraftSeatMapsFromApi(aircraftTypes),
+      );
+      if (syncedAircraftMaps.isNotEmpty) {
+        _ctrl.aircraftMaps = syncedAircraftMaps;
         _ctrl.aircraftOptions
           ..clear()
-          ..addAll(syncedAircrafts);
+          ..addAll(syncedAircraftMaps.keys);
       }
       if (_ctrl.aircraftOptions.isNotEmpty &&
           !_ctrl.aircraftOptions.contains(_ctrl.selectedAircraft.value)) {
