@@ -48,6 +48,8 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
   bool _isLoading = true;
   bool _isSubmitting = false;
   List<_StationOption> _stations = const <_StationOption>[];
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _stationQuery = '';
 
   String get _displayName {
     if (widget.userName.trim().isNotEmpty) {
@@ -63,6 +65,15 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
   void initState() {
     super.initState();
     _loadStations();
+    _searchCtrl.addListener(() {
+      setState(() => _stationQuery = _searchCtrl.text.toLowerCase());
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStations() async {
@@ -215,135 +226,150 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4FF),
-      body: Column(
-        children: [
-          ParallaxHeroWidget(
-            bottomPadding: 220,
-            trailingAction: GestureDetector(
-              onTap: _handleLogout,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(20.r),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.30),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.logout_rounded, color: Colors.white, size: 16.sp),
-                    SizedBox(width: 6.w),
-                    Text(
-                      'Logout',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              ParallaxHeroWidget(
+                bottomPadding: 220,
+                trailingAction: GestureDetector(
+                  onTap: _handleLogout,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20.r),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.30),
+                        width: 1,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            child: Text(
-              'Welcome, $_displayName!',
-              style: GoogleFonts.dmSans(
-                fontSize: 30.sp,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -0.8,
-                height: 1.15,
-              ),
-            ),
-          ),
-          Transform.translate(
-            offset: const Offset(0, -90),
-            child: Container(
-              margin: EdgeInsets.symmetric(horizontal: 16.w),
-              padding: EdgeInsets.fromLTRB(20.w, 22.h, 20.w, 30.h),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.07),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Select your station to begin',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13.sp,
-                      color: Colors.grey.shade500,
-                      height: 1.5,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.logout_rounded, color: Colors.white, size: 16.sp),
+                        SizedBox(width: 6.w),
+                        Text(
+                          'Logout',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 14.h),
-                  _buildStationList(),
-                  SizedBox(height: 16.h),
-                  GestureDetector(
-                    onTap: (_isLoading || _stations.isEmpty || _isSubmitting)
-                        ? null
-                        : () => _continueWithStation(),
-                    child: Container(
-                      height: 54.h,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: (_isLoading || _stations.isEmpty)
-                            ? _C.blue.withValues(alpha: 0.45)
-                            : _C.blue,
-                        borderRadius: BorderRadius.circular(30.r),
+                ),
+                child: Text(
+                  'Welcome, $_displayName!',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 30.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.8,
+                    height: 1.15,
+                  ),
+                ),
+              ),
+              Transform.translate(
+                offset: const Offset(0, -200),
+                child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: 16.w),
+                  padding: EdgeInsets.fromLTRB(20.w, 22.h, 20.w, 30.h),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(28.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.07),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
                       ),
-                      alignment: Alignment.center,
-                      child: _isSubmitting
-                          ? SizedBox(
-                              width: 22.w,
-                              height: 22.w,
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Select your station to begin',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13.sp,
+                          color: Colors.grey.shade500,
+                          height: 1.5,
+                        ),
+                      ),
+                      SizedBox(height: 14.h),
+                      _buildStationList(),
+                      SizedBox(height: 16.h),
+                      GestureDetector(
+                        onTap: (_isLoading || _stations.isEmpty || _isSubmitting)
+                            ? null
+                            : () => _continueWithStation(),
+                        child: Container(
+                          height: 54.h,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: (_isLoading || _stations.isEmpty)
+                                ? _C.blue.withValues(alpha: 0.45)
+                                : _C.blue,
+                            borderRadius: BorderRadius.circular(30.r),
+                          ),
+                          alignment: Alignment.center,
+                          child: _isSubmitting
+                              ? SizedBox(
+                                  width: 22.w,
+                                  height: 22.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'CONTINUE',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    letterSpacing: 1.2,
+                                  ),
                                 ),
-                              ),
-                            )
-                          : Text(
-                              'CONTINUE',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 15.sp,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+
+              // Transform.translate(
+              //   offset: const Offset(0, -195),
+              //   child: _buildHomeIndicator(),
+              // ),
+            ],
           ),
-          const Spacer(),
-          _buildHomeIndicator(),
-        ],
+        ),
       ),
     );
   }
 
+
   Widget _buildStationList() {
+    final filtered = _stationQuery.isEmpty
+        ? _stations
+        : _stations
+            .where((s) => s.label.toLowerCase().contains(_stationQuery))
+            .toList();
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
       constraints: BoxConstraints(
         minHeight: 86.h,
-        maxHeight: 260.h,
+        maxHeight: 320.h,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFF),
@@ -368,7 +394,40 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
               ),
             ],
           ),
-          SizedBox(height: 12.h),
+          SizedBox(height: 10.h),
+          // ── Search bar ──
+          TextField(
+            controller: _searchCtrl,
+            style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.ink),
+            decoration: InputDecoration(
+              hintText: 'Search station...',
+              hintStyle: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
+              prefixIcon: Icon(Icons.search_rounded, size: 18.sp, color: _C.muted),
+              suffixIcon: _stationQuery.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () => _searchCtrl.clear(),
+                      child: Icon(Icons.close_rounded, size: 16.sp, color: _C.muted),
+                    )
+                  : null,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 10.h),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14.r),
+                borderSide: BorderSide(color: _C.border, width: 1.2),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14.r),
+                borderSide: BorderSide(color: _C.border, width: 1.2),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14.r),
+                borderSide: BorderSide(color: _C.blue, width: 1.5),
+              ),
+            ),
+          ),
+          SizedBox(height: 10.h),
           if (_isLoading)
             SizedBox(
               height: 52.h,
@@ -392,11 +451,24 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                 ),
               ),
             )
+          else if (filtered.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Text(
+                'No stations match "${_searchCtrl.text}".',
+                style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
+              ),
+            )
           else
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
-                  children: _stations
+                  children: filtered
                       .map(
                         (station) => GestureDetector(
                           onTap: () {
