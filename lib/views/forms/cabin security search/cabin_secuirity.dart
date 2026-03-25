@@ -401,6 +401,13 @@ class CabinQualityController extends GetxController {
     filteredAreas.assignAll(availableAreas);
     areaSearchCtrl.addListener(_onAreaSearch);
     _initAircraftMaps();
+    ever(selectedAircraft, (_) {
+      auditedSeats.clear();
+      selectedSeatIds.clear();
+      areaCards.clear();
+      selectedAreas.clear();
+      imageUploadedMap.clear();
+    });
   }
 
   void _onAreaSearch() {
@@ -2320,35 +2327,99 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // SEAT MAP
   // ─────────────────────────────────────────────
   Widget _buildSeatMap() {
+    double planeWidth = 330.w;
     return Obx(() {
       final aircraftMap = _ctrl.currentAircraftMap;
-      return Container(
-        decoration: BoxDecoration(
-          color: _C.planeGrey,
-          borderRadius: BorderRadius.circular(32.r),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(32.r),
-          child: CustomPaint(
-            painter: _PlaneSilhouettePainter(),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(0, 0, 0, 40.h),
+      return SizedBox(
+        width: planeWidth,
+        child: Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            // BACKGROUND PLANE SHAPE
+            Positioned.fill(
               child: Column(
                 children: [
-                  SizedBox(height: 60.h),
-                  if (aircraftMap.hasFirstClassArc) ...[
-                    _buildFirstClassArc(),
-                    SizedBox(height: 12.h),
-                  ],
-                  ...aircraftMap.sections.map((s) => _buildSection(s)),
-                  SizedBox(height: 40.h),
+                  ClipRect(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      heightFactor: 0.95,
+                      child: Image.asset(
+                        'assets/images/nose.png',
+                        width: planeWidth * 1.08,
+                        fit: BoxFit.fitWidth,
+                        color: _C.planeGrey,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      width: planeWidth,
+                      color: _C.planeGrey,
+                    ),
+                  ),
+                  ClipRect(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      heightFactor: 0.90,
+                      child: Image.asset(
+                        'assets/images/tail.png',
+                        width: planeWidth * 1.06,
+                        fit: BoxFit.fitWidth,
+                        color: _C.planeGrey,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-          ),
+
+            // FOREGROUND SEAT MAP
+            Container(
+              constraints: BoxConstraints(
+                minHeight: planeWidth * 2.0,
+              ),
+              child: Column(
+                children: [
+                  SizedBox(height: 110.h),
+                  _buildCockpitWindows(),
+                  SizedBox(height: 100.h),
+
+                  ...aircraftMap.sections.map((s) => _buildSection(s)),
+                  SizedBox(height: 320.h),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     });
+  }
+
+  Widget _buildCockpitWindows() {
+    int windowCount = 6;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(windowCount, (i) {
+        double indexOffset = i - (windowCount - 1) / 2;
+        double angle = indexOffset * 0.25;
+        double yOffset = (indexOffset.abs() * indexOffset.abs()) * 4;
+        return Transform.translate(
+          offset: Offset(0, yOffset),
+          child: Transform.rotate(
+            angle: angle,
+            child: Container(
+              margin: EdgeInsets.symmetric(horizontal: 2.w),
+              width: 24.w,
+              height: 18.h,
+              decoration: BoxDecoration(
+                color: const Color(0xFF5D6E7E),
+                borderRadius: BorderRadius.circular(2.r),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
   }
 
   Widget _buildSection(SeatSection section) {
@@ -2387,6 +2458,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           );
         }),
         SizedBox(height: 16.h),
+        if (section.hasExitAfter) _buildExitRow(),
         if (section.amenitiesAfter != null)
           ...section.amenitiesAfter!.map(
             (a) => _buildAmenityRow(
@@ -2397,39 +2469,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
               centerOnly: a.centerOnly,
             ),
           ),
-        if (section.hasExitAfter) _buildExitRow(),
       ],
     );
   }
 
-  Widget _buildFirstClassArc() {
-    return SizedBox(
-      height: 120.h,
-      child: Stack(
-        alignment: Alignment.center,
-        children: List.generate(9, (i) {
-          const radius = 72.0;
-          final x = -radius * (1 - 2 * i / 8);
-          final y = -radius * 0.6 * (0.5 - (i / 8 - 0.5).abs());
-          final tilt = (i / 8 - 0.5) * 60;
-          return Transform.translate(
-            offset: Offset(x * 0.9, y + 30),
-            child: Transform.rotate(
-              angle: tilt * 3.14159 / 180,
-              child: Container(
-                width: i == 4 ? 28.w : 22.w,
-                height: i == 4 ? 44.h : 36.h,
-                decoration: BoxDecoration(
-                  color: _C.seatColor,
-                  borderRadius: BorderRadius.circular(6.r),
-                ),
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
 
   Widget _buildColHeaders(List<String> cols) {
     return Padding(
@@ -2778,30 +2821,51 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
     IconData? suffixIcon,
-  }) => Container(
-    padding: EdgeInsets.symmetric(horizontal: 16.w),
-    decoration: BoxDecoration(
-      color: _C.white,
-      borderRadius: BorderRadius.circular(30.r),
-      border: Border.all(color: _C.border),
-    ),
-    child: DropdownButtonHideUnderline(
-      child: DropdownButton<String>(
-        value: value,
-        isExpanded: true,
-        icon: Icon(
-          suffixIcon ?? Icons.keyboard_arrow_down_rounded,
-          color: _C.grey,
-          size: 20.sp,
-        ),
-        style: _fieldStyle(),
-        items: items
-            .map((i) => DropdownMenuItem(value: i, child: Text(i)))
-            .toList(),
-        onChanged: onChanged,
-      ),
-    ),
-  );
+  }) =>
+      LayoutBuilder(builder: (context, constraints) {
+        return PopupMenuButton<String>(
+          onSelected: onChanged,
+          offset: Offset(0, 58.h),
+          constraints: BoxConstraints(
+            minWidth: constraints.maxWidth,
+            maxWidth: constraints.maxWidth,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          itemBuilder: (context) => items
+              .map((i) => PopupMenuItem(
+                    value: i,
+                    height: 40.h,
+                    child: Text(i, style: _fieldStyle()),
+                  ))
+              .toList(),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+            decoration: BoxDecoration(
+              color: _C.white,
+              borderRadius: BorderRadius.circular(30.r),
+              border: Border.all(color: _C.border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    style: _fieldStyle(),
+                  ),
+                ),
+                Icon(
+                  suffixIcon ?? Icons.keyboard_arrow_down_rounded,
+                  color: _C.grey,
+                  size: 20.sp,
+                ),
+              ],
+            ),
+          ),
+        );
+      });
 
   Widget _multilineField(String hint, {TextEditingController? controller}) =>
       TextField(
