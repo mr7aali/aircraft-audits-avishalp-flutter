@@ -25,10 +25,11 @@ class AppApiService {
       return _normalizeBaseUrl(configured);
     }
 
-    final defaultHost =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+    final defaultHost = kReleaseMode
         ? 'https://sensitive-united-contracts-governor.trycloudflare.com/api'
-        : 'https://sensitive-united-contracts-governor.trycloudflare.com/api';
+        : !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+        ? 'http://10.0.2.2:3000/api'
+        : 'http://localhost:3000/api';
     return _normalizeBaseUrl(defaultHost);
   }
 
@@ -462,8 +463,16 @@ class AppApiService {
           throw ApiException('Unsupported request method: $method');
       }
     } on SocketException {
-      throw const ApiException(
-        'Unable to reach the backend. Check the API base URL and server status.',
+      final baseUri = Uri.tryParse(baseUrl);
+      final reachableHost = baseUri == null
+          ? baseUrl
+          : '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}';
+      final androidHint =
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+              ? ' For Android APKs, confirm the installed release was built with the correct API_BASE_URL and that the phone can open $reachableHost.'
+              : '';
+      throw ApiException(
+        'Unable to reach the backend at $reachableHost. Check the API base URL and server status.$androidHint',
       );
     } on HttpException {
       throw const ApiException(

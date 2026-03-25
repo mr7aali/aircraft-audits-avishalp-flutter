@@ -1,16 +1,46 @@
 # avislap
 
-A new Flutter project.
+## API Base URL Setup
 
-## Getting Started
+The app reads `API_BASE_URL` from `String.fromEnvironment()` in
+`lib/services/app_api_service.dart`.
 
-This project is a starting point for a Flutter application.
+Included config files:
 
-A few resources to get you started if this is your first Flutter project:
+- `.env.development`
+- `.env.android-emulator`
+- `.env.production`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Development
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Web or desktop:
+
+```bash
+flutter run --dart-define-from-file=.env.development
+```
+
+Android emulator:
+
+```bash
+flutter run --dart-define-from-file=.env.android-emulator
+```
+
+### Production APK
+
+Always build the APK with an explicit production base URL:
+
+```bash
+flutter build apk --release --dart-define-from-file=.env.production
+```
+
+You can also override it directly:
+
+```bash
+flutter build apk --release --dart-define=API_BASE_URL=https://your-domain.com/api
+```
+
+### Notes
+
+- `10.0.2.2` only works from the Android emulator.
+- A real phone needs a publicly reachable backend URL or your machine's LAN IP.
+- `trycloudflare.com` URLs are temporary. Replace `.env.production` with your stable production API when available.
