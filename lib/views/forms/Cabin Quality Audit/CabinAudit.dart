@@ -197,6 +197,10 @@ class CabinAudit extends GetxController {
       checkItemStatuses.clear();
       checkItemImages.clear();
       checkItemTags.clear();
+      mandatoryAreas.clear();
+    });
+    ever(selectedCleanType, (_) {
+      mandatoryAreas.clear();
     });
   }
 
@@ -261,6 +265,71 @@ class CabinAudit extends GetxController {
 
   AircraftSeatMap get currentAircraftMap =>
       aircraftMaps[selectedAircraft.value] ?? aircraftMaps.values.first;
+
+  final RxSet<String> mandatoryAreas = <String>{}.obs;
+
+  void generateMandatoryAreas() {
+    mandatoryAreas.clear();
+    final map = currentAircraftMap;
+    final List<String> allValidAreas = [];
+
+    for (final section in map.sections) {
+      if (section.skipRows == null) {} // Just to suppress unused warning conceptually
+      for (int r = section.startRow; r <= section.endRow; r++) {
+        if (section.skipRows?.contains(r) ?? false) continue;
+        for (final col in section.leftCols) { if(col.isNotEmpty) allValidAreas.add('$r$col'); }
+        for (final col in section.rightCols) { if(col.isNotEmpty) allValidAreas.add('$r$col'); }
+      }
+      if (section.amenitiesBefore != null) {
+        for (final a in section.amenitiesBefore!) {
+          if (a.customLabel != null) { allValidAreas.add(a.effectiveAmenityId); }
+          else if (a.centerOnly) { allValidAreas.add(a.effectiveAmenityId); }
+          else {
+            if (a.leftId != null) allValidAreas.add(a.leftId!);
+            if (a.rightId != null) allValidAreas.add(a.rightId!);
+          }
+        }
+      }
+      if (section.amenitiesAfter != null) {
+        for (final a in section.amenitiesAfter!) {
+          if (a.customLabel != null) { allValidAreas.add(a.effectiveAmenityId); }
+          else if (a.centerOnly) { allValidAreas.add(a.effectiveAmenityId); }
+          else {
+            if (a.leftId != null) allValidAreas.add(a.leftId!);
+            if (a.rightId != null) allValidAreas.add(a.rightId!);
+          }
+        }
+      }
+    }
+
+    if (allValidAreas.isEmpty) return;
+
+    allValidAreas.shuffle(math.Random());
+
+    int targetCount = 0;
+    final cleanType = selectedCleanType.value.toLowerCase();
+    if (cleanType.contains('dcs turn')) {
+      targetCount = 8;
+    } else if (cleanType.contains('over night') || cleanType.contains('all day')) {
+      targetCount = 20;
+    } else if (cleanType.contains('charter')) {
+      targetCount = 12;
+    } else if (cleanType.contains('diversion')) {
+      targetCount = 10;
+    } else if (cleanType.contains('security')) {
+      targetCount = 5;
+    } else if (cleanType.contains('msgt')) {
+      targetCount = 10;
+    } else {
+      targetCount = 8;
+    }
+
+    if (targetCount > allValidAreas.length) {
+      targetCount = allValidAreas.length;
+    }
+
+    mandatoryAreas.addAll(allValidAreas.take(targetCount));
+  }
 
   void markSeat(String id, String status) => auditedSeats[id] = status;
   void clearSeat(String id) => auditedSeats.remove(id);
@@ -629,7 +698,12 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
             ),
           ),
         ),
-        _nextButton(() => setState(() => _step = 1)),
+        _nextButton(() {
+          if (_ctrl.mandatoryAreas.isEmpty) {
+            _ctrl.generateMandatoryAreas();
+          }
+          setState(() => _step = 1);
+        }),
       ],
     );
   }
@@ -664,7 +738,54 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                     suffixIcon: Icons.search_rounded,
                   ),
                 ),
-                SizedBox(height: 20.h),
+                SizedBox(height: 16.h),
+                Obx(() {
+                  if (_ctrl.mandatoryAreas.isEmpty) return const SizedBox.shrink();
+                  int audited = _ctrl.mandatoryAreas.where((m) => _ctrl.auditedSeats.containsKey(m)).length;
+                  bool allDone = audited == _ctrl.mandatoryAreas.length;
+                  return Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(14.w),
+                    decoration: BoxDecoration(
+                      color: allDone ? _C.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12.r),
+                      border: Border.all(color: allDone ? _C.green : Colors.orange),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(allDone ? Icons.check_circle_rounded : Icons.warning_amber_rounded, color: allDone ? _C.green : Colors.orange.shade800, size: 20.sp),
+                            SizedBox(width: 8.w),
+                            Text(
+                              'Randomly System Areas ($audited / ${_ctrl.mandatoryAreas.length})',
+                              style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 13.sp, color: allDone ? _C.green : Colors.orange.shade800),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8.h),
+                        Wrap(
+                          spacing: 8.w,
+                          runSpacing: 6.h,
+                          children: _ctrl.mandatoryAreas.map((m) {
+                            bool isDone = _ctrl.auditedSeats.containsKey(m);
+                            return Text(
+                              m, 
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12.sp, 
+                                fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
+                                color: isDone ? _C.green : _C.dark, 
+                                decoration: isDone ? TextDecoration.lineThrough : null,
+                              ),
+                            );
+                          }).toList(),
+                        )
+                      ],
+                    )
+                  );
+                }),
+                SizedBox(height: 16.h),
                 _buildLegend(),
                 SizedBox(height: 16.h),
                 _buildSeatMap(),
@@ -673,20 +794,48 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
             ),
           ),
         ),
-        _nextButton(() => setState(() => _step = 2)),
+        _nextButton(() {
+          final missing = _ctrl.mandatoryAreas.where((m) => !_ctrl.auditedSeats.containsKey(m)).toList();
+          if (missing.isNotEmpty) {
+            Get.snackbar(
+              'Incomplete',
+              'Please audit all required system-selected areas.',
+              backgroundColor: _C.red,
+              colorText: Colors.white,
+              snackPosition: SnackPosition.TOP,
+            );
+            return;
+          }
+          setState(() => _step = 2);
+        }),
       ],
     );
   }
 
   Widget _buildLegend() {
-    return Row(
-      children: [
-        _legendDot(_C.green, 'Pass'),
-        SizedBox(width: 16.w),
-        _legendDot(_C.red, 'Fail'),
-        SizedBox(width: 16.w),
-        _legendDot(_C.seatColor, 'Not audited'),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _legendDot(_C.green, 'Pass'),
+          SizedBox(width: 12.w),
+          _legendDot(_C.red, 'Fail'),
+          SizedBox(width: 12.w),
+          _legendDot(_C.seatColor, 'Not audited'),
+          SizedBox(width: 12.w),
+          Row(
+            children: [
+              Container(
+                width: 10.w,
+                height: 10.h,
+                decoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle, border: Border.all(color: Colors.orange, width: 2)),
+              ),
+              SizedBox(width: 4.w),
+              Text('Mandatory', style: GoogleFonts.dmSans(fontSize: 10.sp, color: _C.grey)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1115,6 +1264,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   Widget _seat(String id) {
     return Obx(() {
       final status = _ctrl.auditedSeats[id];
+      final isMandatory = _ctrl.mandatoryAreas.contains(id);
       final color = status == 'pass'
           ? _C.green
           : status == 'fail'
@@ -1126,7 +1276,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           width: 30.w,
           height: 32.h,
           margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
-          child: CustomPaint(painter: _SeatPainter(color: color)),
+          child: CustomPaint(painter: _SeatPainter(color: color, isMandatory: isMandatory)),
         ),
       );
     });
@@ -1166,11 +1316,14 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   Widget _amenityBox(String svgPath, String id) {
     return Obx(() {
       final status = _ctrl.auditedSeats[id];
+      final isMandatory = _ctrl.mandatoryAreas.contains(id);
+      
       final color = status == 'pass'
           ? _C.green
           : status == 'fail'
           ? _C.red
           : _C.seatColor;
+          
       return GestureDetector(
         onTap: () => _showSeatSheet(id),
         child: Container(
@@ -1179,6 +1332,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(10.r),
+            border: isMandatory && status == null 
+                ? Border.all(color: Colors.orange, width: 2.5) 
+                : null,
           ),
           child: Center(
             child: SvgPicture.asset(
@@ -2395,11 +2551,18 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 
   String _buildAdditionalNotes() {
     final notes = _additionalNotesCtrl.text.trim();
+    
+    final adhocAreas = _ctrl.auditedSeats.keys
+        .where((id) => !_ctrl.mandatoryAreas.contains(id))
+        .toList();
+        
     final metadata = <String>[
       if (_ctrl.selectedAircraft.value.trim().isNotEmpty)
         'Aircraft: ${_ctrl.selectedAircraft.value.trim()}',
       if (_supervisorCtrl.text.trim().isNotEmpty)
         'Supervisor/Lead: ${_supervisorCtrl.text.trim()}',
+      if (adhocAreas.isNotEmpty)
+        'Ad-hoc Audited Areas (Extra Observations): ${adhocAreas.join(", ")}',
     ].join('\n');
 
     final combined = [
@@ -2618,7 +2781,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 // ─────────────────────────────────────────────
 class _SeatPainter extends CustomPainter {
   final Color color;
-  const _SeatPainter({required this.color});
+  final bool isMandatory;
+  const _SeatPainter({required this.color, this.isMandatory = false});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2660,6 +2824,21 @@ class _SeatPainter extends CustomPainter {
       ),
       armPaint,
     );
+    
+    if (isMandatory && color == _C.seatColor) {
+      final borderPaint = Paint()
+        ..color = Colors.orange
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+        
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(-1, -1, w + 2, h * 0.95 + 2),
+          const Radius.circular(5),
+        ),
+        borderPaint,
+      );
+    }
   }
 
   @override

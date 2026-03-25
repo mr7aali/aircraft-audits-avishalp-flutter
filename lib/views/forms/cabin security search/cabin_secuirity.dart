@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -331,6 +332,7 @@ class CabinQualityController extends GetxController {
   final RxBool showAreaDropdown = false.obs;
 
   final RxSet<String> selectedSeatIds = <String>{}.obs;
+  final RxSet<String> mandatoryAreas = <String>{}.obs;
 
   // Reactive trackers so Obx re-renders when image uploaded or subitem changes
   final RxMap<String, bool> imageUploadedMap = <String, bool>{}.obs;
@@ -444,6 +446,7 @@ class CabinQualityController extends GetxController {
   }
 
   void removeArea(String area) {
+    if (mandatoryAreas.contains(area)) return;
     selectedAreas.remove(area);
     areaCards.removeWhere((c) => c.areaName == area);
     imageUploadedMap.remove(area);
@@ -1002,6 +1005,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                           onTrailingTap: () => Navigator.of(sheetContext).pop(),
                         ),
                         SizedBox(height: 10.h),
+                        if (!_ctrl.mandatoryAreas.contains(areaName))
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
@@ -1149,6 +1153,15 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
               duration: const Duration(seconds: 3),
             );
             return;
+          }
+          if (_ctrl.mandatoryAreas.isEmpty) {
+            final allAreas = List<String>.from(kCabinAreas);
+            allAreas.shuffle(math.Random());
+            final picked = allAreas.take(5).toList();
+            _ctrl.mandatoryAreas.addAll(picked);
+            for (final area in picked) {
+              _ctrl.addArea(area);
+            }
           }
           setState(() => _step = 1);
         }),
@@ -1512,43 +1525,80 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                         ),
                       );
                     }
-                    return Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.h,
-                      children: _ctrl.selectedAreas.map((area) {
-                        return Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 6.h,
-                          ),
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          margin: EdgeInsets.only(bottom: 12.h),
+                          padding: EdgeInsets.all(12.w),
                           decoration: BoxDecoration(
-                            color: _C.primary,
-                            borderRadius: BorderRadius.circular(20.r),
+                            color: Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8.r),
+                            border: Border.all(color: Colors.orange),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                area,
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 12.sp,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 20.sp),
+                                  SizedBox(width: 8.w),
+                                  Text(
+                                    'Subcategories (Hiding Places)',
+                                    style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 13.sp, color: Colors.orange.shade800),
+                                  ),
+                                ],
                               ),
-                              SizedBox(width: 6.w),
-                              GestureDetector(
-                                onTap: () => _ctrl.removeArea(area),
-                                child: Icon(
-                                  Icons.close,
-                                  size: 14.sp,
-                                  color: Colors.white,
-                                ),
+                              SizedBox(height: 4.h),
+                              Text('The system has randomly selected 5 areas. You must hide assets in these places and check them.',
+                                style: GoogleFonts.dmSans(fontSize: 12.sp, color: Colors.orange.shade800, height: 1.4),
                               ),
                             ],
-                          ),
-                        );
-                      }).toList(),
+                          )
+                        ),
+                        Wrap(
+                          spacing: 8.w,
+                          runSpacing: 8.h,
+                          children: _ctrl.selectedAreas.map((area) {
+                            final isMandatory = _ctrl.mandatoryAreas.contains(area);
+                            return Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.w,
+                                vertical: 6.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _C.primary,
+                                borderRadius: BorderRadius.circular(20.r),
+                                border: isMandatory ? Border.all(color: Colors.orange, width: 2) : null,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    area,
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 12.sp,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (!isMandatory) SizedBox(width: 6.w),
+                                  if (!isMandatory)
+                                    GestureDetector(
+                                      onTap: () => _ctrl.removeArea(area),
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 14.sp,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
                     );
                   }),
                   SizedBox(height: 16.h),
