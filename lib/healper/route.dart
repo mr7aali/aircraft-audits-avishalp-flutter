@@ -1,10 +1,9 @@
 import 'package:avislap/views/auth/splash_screen.dart';
 import 'package:avislap/views/auth/login_screen.dart';
-import 'package:avislap/views/forms/LAV%20Safety%20Observation/LAVSafety.dart';
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
+import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
 import 'package:get/get.dart';
 
-import '../views/auth/FlightAnimation.dart';
 import '../views/dashboard/dashboard_screen.dart';
 import '../views/forms/Cabin Quality Audit/CabinAudit.dart';
 import '../views/forms/cabin security search/cabin_secuirity.dart';
@@ -17,6 +16,7 @@ class RouteHelper {
   // static const String lavSafety = '/lav-safety';
   static const String lavSafety = '/LAVSafety';
   static const String cabinSecurityTraining = '/cabin_secuirity';
+  static const String hiddenObjectAudit = '/hidden_object_audit';
 
   static List<GetPage> routes = [
     GetPage(
@@ -48,6 +48,11 @@ class RouteHelper {
     GetPage(
       name: cabinSecurityTraining,
       page: () => const CabinQualityAuditScreenN(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
+      name: hiddenObjectAudit,
+      page: () => const HiddenObjectAuditListScreen(),
       transition: Transition.rightToLeft,
     ),
   ];
