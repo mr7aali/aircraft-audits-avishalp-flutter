@@ -474,9 +474,11 @@ class _HiddenObjectAuditWorkflowScreenState
       <HiddenObjectFleetOption>[];
   final List<HiddenObjectAircraftOption> _aircraftOptions =
       <HiddenObjectAircraftOption>[];
+  final Set<String> _selectedCreateLocationCodes = <String>{};
 
   bool _loading = true;
   bool _saving = false;
+  bool _manualSelectionEnabled = false;
   String? _selectedShipNumber;
   String? _selectedAircraftTypeId;
   HiddenObjectAuditDetail? _detail;
@@ -528,7 +530,12 @@ class _HiddenObjectAuditWorkflowScreenState
   Future<void> _loadCreateOptions() async {
     final fleet = await _api.getFleetAircraft();
     final aircraftTypes = await _api.getAircraftTypes();
-    final fleetOptions = fleet.map(HiddenObjectFleetOption.fromMap).toList();
+    final fleetOptions =
+        fleet
+            .where((item) => item['isActive'] != false)
+            .map(HiddenObjectFleetOption.fromMap)
+            .toList()
+          ..sort((a, b) => a.shipNumber.compareTo(b.shipNumber));
     final aircraftOptions = aircraftTypes
         .map(HiddenObjectAircraftOption.fromMap)
         .toList();
@@ -555,20 +562,83 @@ class _HiddenObjectAuditWorkflowScreenState
     (item) => item.shipNumber == _selectedShipNumber,
   );
 
+  List<HiddenObjectAircraftOption> get _availableAircraftOptions {
+    final selectedFleet = _selectedFleet;
+    if (selectedFleet == null) {
+      return _aircraftOptions;
+    }
+
+    final matchedOption = _aircraftOptions.firstWhereOrNull(
+      (item) => item.id == selectedFleet.aircraftTypeId,
+    );
+    return matchedOption == null
+        ? const <HiddenObjectAircraftOption>[]
+        : <HiddenObjectAircraftOption>[matchedOption];
+  }
+
+  bool get _hasManualCreateSelection => _selectedCreateLocationCodes.isNotEmpty;
+  bool get _isUsingManualCreateSelection =>
+      _manualSelectionEnabled && _hasManualCreateSelection;
+
   seat_map_config.AircraftSeatMap? get _currentSeatMap {
     if (_detail != null) {
       return _detail!.seatMap;
     }
 
-    return _aircraftOptions
+    return _availableAircraftOptions
         .firstWhereOrNull((item) => item.id == _selectedAircraftTypeId)
         ?.seatMap;
+  }
+
+  void _clearCreateSelections({bool clearCount = false}) {
+    _selectedCreateLocationCodes.clear();
+  }
+
+  void _syncObjectCountToSelection() {
+    if (_selectedCreateLocationCodes.isEmpty) {
+      return;
+    }
+    _objectCountCtrl.text = _selectedCreateLocationCodes.length.toString();
+  }
+
+  void _toggleCreateLocationSelection(String code) {
+    setState(() {
+      if (_selectedCreateLocationCodes.contains(code)) {
+        _selectedCreateLocationCodes.remove(code);
+      } else {
+        _selectedCreateLocationCodes.add(code);
+      }
+      _syncObjectCountToSelection();
+    });
+  }
+
+  void _setManualSelectionEnabled(bool enabled) {
+    setState(() {
+      _manualSelectionEnabled = enabled;
+      if (!enabled) {
+        _clearCreateSelections();
+      } else {
+        _syncObjectCountToSelection();
+      }
+    });
   }
 
   Future<void> _createAudit() async {
     final shipNumber = _selectedShipNumber?.trim() ?? '';
     final aircraftTypeId = _selectedAircraftTypeId?.trim() ?? '';
-    final objectCount = int.tryParse(_objectCountCtrl.text.trim()) ?? 0;
+    final objectCount = _isUsingManualCreateSelection
+        ? _selectedCreateLocationCodes.length
+        : int.tryParse(_objectCountCtrl.text.trim()) ?? 0;
+
+    if (_manualSelectionEnabled && !_hasManualCreateSelection) {
+      Get.snackbar(
+        'Create Audit',
+        'Tap at least one seat or zone, or turn off manual selection to keep random generation.',
+        backgroundColor: _HOColors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
 
     if (shipNumber.isEmpty || aircraftTypeId.isEmpty || objectCount <= 0) {
       Get.snackbar(
@@ -580,26 +650,59 @@ class _HiddenObjectAuditWorkflowScreenState
       return;
     }
 
+    final selectedFleet = _selectedFleet;
+    if (selectedFleet != null &&
+        selectedFleet.aircraftTypeId != aircraftTypeId) {
+      setState(() => _selectedAircraftTypeId = selectedFleet.aircraftTypeId);
+      Get.snackbar(
+        'Aircraft Type Updated',
+        'Aircraft type was reset to ${selectedFleet.aircraftTypeName} to match ship ${selectedFleet.shipNumber}.',
+        backgroundColor: _HOColors.primary,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       final response = await _api.createHiddenObjectAudit({
         'shipNumber': shipNumber,
         'aircraftTypeId': aircraftTypeId,
         'numberOfObjectsToHide': objectCount,
+        if (_isUsingManualCreateSelection)
+          'selectedLocationCodes': _selectedCreateLocationCodes.toList(),
       });
       setState(() {
         _detail = HiddenObjectAuditDetail.fromMap(response);
       });
       Get.snackbar(
         'Audit Created',
-        'Targets generated. Tap each orange location to confirm the hiding point.',
+        _isUsingManualCreateSelection
+            ? 'Your selected hide locations are ready. Tap each orange location to confirm the hiding point.'
+            : 'Targets generated. Tap each orange location to confirm the hiding point.',
         backgroundColor: _HOColors.green,
         colorText: Colors.white,
       );
     } on ApiException catch (error) {
+      final selectedFleet = _selectedFleet;
+      final errorMessage =
+          error.message ==
+              'Selected aircraft type does not match the fleet registry for this ship number'
+          ? selectedFleet == null
+                ? 'The selected ship has a different aircraft type in the fleet registry. Please reselect the ship and try again.'
+                : 'Ship ${selectedFleet.shipNumber} is registered as ${selectedFleet.aircraftTypeName}. The form has been aligned to that aircraft type.'
+          : error.message;
+
+      if (error.message ==
+          'Selected aircraft type does not match the fleet registry for this ship number') {
+        setState(() {
+          _selectedAircraftTypeId = selectedFleet?.aircraftTypeId;
+        });
+      }
+
       Get.snackbar(
         'Create Audit',
-        error.message,
+        errorMessage,
         backgroundColor: _HOColors.red,
         colorText: Colors.white,
       );
@@ -637,57 +740,6 @@ class _HiddenObjectAuditWorkflowScreenState
     } on ApiException catch (error) {
       Get.snackbar(
         'Activate Audit',
-        error.message,
-        backgroundColor: _HOColors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
-    }
-  }
-
-  Future<void> _closeAudit() async {
-    if (_detail == null) return;
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Close Audit?'),
-            content: const Text(
-              'Any remaining blue locations will be marked red as not found.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Close Audit'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return;
-
-    setState(() => _saving = true);
-    try {
-      final response = await _api.closeHiddenObjectAudit(_detail!.id);
-      setState(() {
-        _detail = HiddenObjectAuditDetail.fromMap(response);
-      });
-      Get.snackbar(
-        'Audit Closed',
-        'Remaining active locations were finalized.',
-        backgroundColor: _HOColors.green,
-        colorText: Colors.white,
-      );
-    } on ApiException catch (error) {
-      Get.snackbar(
-        'Close Audit',
         error.message,
         backgroundColor: _HOColors.red,
         colorText: Colors.white,
@@ -871,14 +923,14 @@ class _HiddenObjectAuditWorkflowScreenState
               ),
               SizedBox(height: 8.h),
               Text(
-                'Choose a ship, confirm the aircraft type, and generate random hiding targets.',
+                'Choose a ship, confirm the aircraft type, and generate hiding targets. You can leave it random or tap the seat map to pick locations yourself.',
                 style: GoogleFonts.dmSans(
                   fontSize: 13.sp,
                   color: _HOColors.textMuted,
                 ),
               ),
               SizedBox(height: 18.h),
-              _fieldLabel('Ship Number'),
+              _fieldLabel('Ship # *'),
               SizedBox(height: 8.h),
               DropdownButtonFormField<String>(
                 // ignore: deprecated_member_use
@@ -910,6 +962,8 @@ class _HiddenObjectAuditWorkflowScreenState
                     if (selected != null) {
                       _selectedAircraftTypeId = selected.aircraftTypeId;
                     }
+                    _manualSelectionEnabled = false;
+                    _clearCreateSelections(clearCount: true);
                   });
                 },
               ),
@@ -919,13 +973,13 @@ class _HiddenObjectAuditWorkflowScreenState
               DropdownButtonFormField<String>(
                 // ignore: deprecated_member_use
                 value:
-                    _aircraftOptions.any(
+                    _availableAircraftOptions.any(
                       (item) => item.id == _selectedAircraftTypeId,
                     )
                     ? _selectedAircraftTypeId
                     : null,
                 decoration: _inputDecoration(),
-                items: _aircraftOptions
+                items: _availableAircraftOptions
                     .map(
                       (item) => DropdownMenuItem<String>(
                         value: item.id,
@@ -933,16 +987,37 @@ class _HiddenObjectAuditWorkflowScreenState
                       ),
                     )
                     .toList(),
-                onChanged: (value) =>
-                    setState(() => _selectedAircraftTypeId = value),
+                onChanged: _selectedFleet == null
+                    ? (value) => setState(() {
+                        _selectedAircraftTypeId = value;
+                        _manualSelectionEnabled = false;
+                        _clearCreateSelections(clearCount: true);
+                      })
+                    : null,
               ),
+              if (_selectedFleet != null) ...[
+                SizedBox(height: 8.h),
+                Text(
+                  'Aircraft type is locked to the fleet registry for this ship.',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _HOColors.textMuted,
+                  ),
+                ),
+              ],
               SizedBox(height: 16.h),
               _fieldLabel('Number of Objects to Hide'),
               SizedBox(height: 8.h),
               TextField(
                 controller: _objectCountCtrl,
+                readOnly: _manualSelectionEnabled,
                 keyboardType: TextInputType.number,
-                decoration: _inputDecoration(hintText: 'Enter a whole number'),
+                decoration: _inputDecoration(
+                  hintText: _manualSelectionEnabled
+                      ? 'Count follows your selected seats'
+                      : 'Enter a whole number',
+                ),
               ),
               if (_selectedFleet != null) ...[
                 SizedBox(height: 14.h),
@@ -967,6 +1042,62 @@ class _HiddenObjectAuditWorkflowScreenState
                 ),
                 SizedBox(height: 8.h),
                 Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 4.h,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9FAFB),
+                    borderRadius: BorderRadius.circular(14.r),
+                    border: Border.all(color: _HOColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Choose exact locations manually',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w700,
+                                color: _HOColors.textDark,
+                              ),
+                            ),
+                            SizedBox(height: 2.h),
+                            Text(
+                              'Keep this off to follow the original random-target flow.',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12.sp,
+                                color: _HOColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: _manualSelectionEnabled,
+                        activeThumbColor: _HOColors.primary,
+                        onChanged: _setManualSelectionEnabled,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  _manualSelectionEnabled
+                      ? _hasManualCreateSelection
+                            ? 'Tap a highlighted location again to remove it. The object count is synced to your manual selection.'
+                            : 'Tap seats or cabin zones to choose the exact hiding locations for this audit.'
+                      : 'Preview only. Turn on manual selection if you want to choose the seats yourself.',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12.sp,
+                    color: _HOColors.textMuted,
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Container(
                   padding: EdgeInsets.all(12.w),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF9FAFB),
@@ -977,8 +1108,67 @@ class _HiddenObjectAuditWorkflowScreenState
                     seatMap: _currentSeatMap!,
                     locationsByCode: const <String, HiddenObjectLocation>{},
                     onLocationTap: (_) {},
+                    selectedLocationCodes: _selectedCreateLocationCodes,
+                    onSelectableLocationTap: _manualSelectionEnabled
+                        ? _toggleCreateLocationSelection
+                        : null,
                   ),
                 ),
+                if (_manualSelectionEnabled && _hasManualCreateSelection) ...[
+                  SizedBox(height: 10.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_selectedCreateLocationCodes.length} manual location${_selectedCreateLocationCodes.length == 1 ? '' : 's'} selected',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w600,
+                            color: _HOColors.primary,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(
+                          () => _clearCreateSelections(clearCount: true),
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: GoogleFonts.dmSans(
+                            fontWeight: FontWeight.w700,
+                            color: _HOColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Wrap(
+                    spacing: 8.w,
+                    runSpacing: 8.h,
+                    children: (_selectedCreateLocationCodes.toList()..sort())
+                        .map(
+                          (code) => Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10.w,
+                              vertical: 6.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _HOColors.orange.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20.r),
+                            ),
+                            child: Text(
+                              code,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11.sp,
+                                fontWeight: FontWeight.w700,
+                                color: _HOColors.orange,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
               ],
               SizedBox(height: 20.h),
               SizedBox(
@@ -1079,7 +1269,7 @@ class _HiddenObjectAuditWorkflowScreenState
     final message = detail.status == 'SETUP'
         ? 'Tap each orange location, choose a sub-location, and upload a hiding photo.'
         : detail.status == 'ACTIVE'
-        ? 'Blue locations are still being searched. Mark them green when found, then close the audit.'
+        ? 'Blue locations are now searched from Cabin Security Search Training. This screen stays in setup and status mode only.'
         : 'This audit is closed. Green means found, red means not found.';
 
     return Container(
@@ -1099,10 +1289,10 @@ class _HiddenObjectAuditWorkflowScreenState
               color: _HOColors.textMuted,
             ),
           ),
-          SizedBox(height: 14.h),
-          Row(
-            children: [
-              if (detail.canActivate)
+          if (detail.canActivate) ...[
+            SizedBox(height: 14.h),
+            Row(
+              children: [
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -1118,28 +1308,9 @@ class _HiddenObjectAuditWorkflowScreenState
                     ),
                   ),
                 ),
-              if (detail.canActivate && detail.canClose) SizedBox(width: 12.w),
-              if (detail.canClose)
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: _HOColors.red),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14.r),
-                      ),
-                    ),
-                    onPressed: _saving ? null : _closeAudit,
-                    child: Text(
-                      'Close Audit',
-                      style: GoogleFonts.dmSans(
-                        fontWeight: FontWeight.w700,
-                        color: _HOColors.red,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1329,29 +1500,6 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
     }
   }
 
-  Future<void> _markFound() async {
-    setState(() => _saving = true);
-    try {
-      final response = await widget.api.markHiddenObjectFound(
-        auditId: widget.auditId,
-        locationId: widget.location.id,
-      );
-      widget.onUpdated(response);
-      if (mounted) Navigator.of(context).pop();
-    } on ApiException catch (error) {
-      Get.snackbar(
-        'Mark Found',
-        error.message,
-        backgroundColor: _HOColors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final imageHeaders = widget.api.buildImageHeaders();
@@ -1510,37 +1658,11 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
               widget.location.status == 'BLUE') ...[
             Text(
               widget.location.subLocation.isEmpty
-                  ? 'Agents are searching this location.'
-                  : 'Agents are searching ${widget.location.subLocation}.',
+                  ? 'Agents are searching this location from Cabin Security Search Training.'
+                  : 'Agents are searching ${widget.location.subLocation} from Cabin Security Search Training.',
               style: GoogleFonts.dmSans(
                 fontSize: 13.sp,
                 color: _HOColors.textMuted,
-              ),
-            ),
-            SizedBox(height: 16.h),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _HOColors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14.r),
-                  ),
-                ),
-                onPressed: _saving ? null : _markFound,
-                child: _saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        'Mark Found',
-                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
-                      ),
               ),
             ),
           ] else ...[
@@ -1576,11 +1698,15 @@ class _HiddenObjectSeatMap extends StatelessWidget {
     required this.seatMap,
     required this.locationsByCode,
     required this.onLocationTap,
+    this.selectedLocationCodes = const <String>{},
+    this.onSelectableLocationTap,
   });
 
   final seat_map_config.AircraftSeatMap seatMap;
   final Map<String, HiddenObjectLocation> locationsByCode;
   final ValueChanged<HiddenObjectLocation> onLocationTap;
+  final Set<String> selectedLocationCodes;
+  final ValueChanged<String>? onSelectableLocationTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1649,11 +1775,18 @@ class _HiddenObjectSeatMap extends StatelessWidget {
 
   Widget _buildSeat(String code) {
     final location = locationsByCode[code];
-    final color = location == null
-        ? _HOColors.seat
-        : _statusColor(location.status);
+    final isSelected = selectedLocationCodes.contains(code);
+    final color = location != null
+        ? _statusColor(location.status)
+        : isSelected
+        ? _HOColors.orange
+        : _HOColors.seat;
     return GestureDetector(
-      onTap: location == null ? null : () => onLocationTap(location),
+      onTap: location != null
+          ? () => onLocationTap(location)
+          : onSelectableLocationTap == null
+          ? null
+          : () => onSelectableLocationTap!(code),
       child: Container(
         width: 28.w,
         height: 30.h,
@@ -1716,11 +1849,18 @@ class _HiddenObjectSeatMap extends StatelessWidget {
     required String asset,
     required HiddenObjectLocation? location,
   }) {
-    final color = location == null
-        ? _HOColors.seat
-        : _statusColor(location.status);
+    final isSelected = selectedLocationCodes.contains(id);
+    final color = location != null
+        ? _statusColor(location.status)
+        : isSelected
+        ? _HOColors.orange
+        : _HOColors.seat;
     return GestureDetector(
-      onTap: location == null ? null : () => onLocationTap(location),
+      onTap: location != null
+          ? () => onLocationTap(location)
+          : onSelectableLocationTap == null
+          ? null
+          : () => onSelectableLocationTap!(id),
       child: Container(
         width: 46.w,
         height: 46.h,
