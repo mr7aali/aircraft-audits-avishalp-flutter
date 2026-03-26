@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:avislap/data/seat_map_config.dart' as seat_map_config;
 import 'package:avislap/services/api_exception.dart';
@@ -18,6 +19,7 @@ class _HOColors {
   static const Color textMuted = Color(0xFF7B8794);
   static const Color border = Color(0xFFE4E7EF);
   static const Color seat = Color(0xFF9AA5B1);
+  static const Color planeGrey = Color(0xFFEDEFF4);
   static const Color orange = Color(0xFFFF9800);
   static const Color blue = Color(0xFF2196F3);
   static const Color green = Color(0xFF22C55E);
@@ -1710,66 +1712,204 @@ class _HiddenObjectSeatMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: seatMap.sections.map(_buildSection).toList(),
+    final planeWidth = 330.w;
+    return SizedBox(
+      width: planeWidth,
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          Positioned.fill(
+            child: Column(
+              children: [
+                ClipRect(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: 0.95,
+                    child: Image.asset(
+                      'assets/images/nose.png',
+                      width: planeWidth * 1.08,
+                      fit: BoxFit.fitWidth,
+                      color: _HOColors.planeGrey,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    width: planeWidth,
+                    color: _HOColors.planeGrey,
+                  ),
+                ),
+                ClipRect(
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    heightFactor: 0.90,
+                    child: Image.asset(
+                      'assets/images/tail.png',
+                      width: planeWidth * 1.06,
+                      fit: BoxFit.fitWidth,
+                      color: _HOColors.planeGrey,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            constraints: BoxConstraints(minHeight: planeWidth * 2.0),
+            child: Column(
+              children: [
+                SizedBox(height: 110.h),
+                _buildCockpitWindows(),
+                SizedBox(height: 100.h),
+                ...seatMap.sections.map(_buildSection),
+                SizedBox(height: 320.h),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCockpitWindows() {
+    const windowCount = 6;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(windowCount, (index) {
+        final indexOffset = index - (windowCount - 1) / 2;
+        final angle = indexOffset * 0.25;
+        final yOffset = math.pow(indexOffset.abs(), 2) * 4;
+        return Transform.translate(
+          offset: Offset(0, yOffset.toDouble()),
+          child: Transform.rotate(
+            angle: angle,
+            child: Container(
+              margin: EdgeInsets.symmetric(horizontal: 2.w),
+              width: 24.w,
+              height: 18.h,
+              decoration: BoxDecoration(
+                color: const Color(0xFF5D6E7E),
+                borderRadius: BorderRadius.circular(2.r),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
   Widget _buildSection(seat_map_config.SeatSection section) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (section.name.isNotEmpty) ...[
-          Text(
-            section.name,
-            style: GoogleFonts.dmSans(
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w700,
-              color: _HOColors.textDark,
-            ),
-          ),
-          SizedBox(height: 8.h),
-        ],
         if (section.amenitiesBefore != null)
-          ...section.amenitiesBefore!.map(_buildAmenityRow),
+          ...section.amenitiesBefore!.map(
+            (amenity) =>
+                amenity.customLabel != null && amenity.customLabel!.isNotEmpty
+                ? _buildCustomAmenityRow(amenity)
+                : _buildAmenityRow(amenity),
+          ),
+        if (section.hasExitBefore) _buildExitRow(),
+        SizedBox(height: 4.h),
+        if (section.name.isNotEmpty) _buildSectionLabel(section.name),
+        SizedBox(height: 4.h),
+        _buildColHeaders([...section.leftCols, '', ...section.rightCols]),
+        SizedBox(height: 4.h),
         ...List.generate(section.endRow - section.startRow + 1, (index) {
           final row = section.startRow + index;
           final skipRow = section.skipRows?.contains(row) == true;
-          return Padding(
-            padding: EdgeInsets.only(bottom: 6.h),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ...section.leftCols.map(
-                  (col) =>
-                      skipRow ? SizedBox(width: 30.w) : _buildSeat('$row$col'),
-                ),
-                SizedBox(
-                  width: 28.w,
-                  child: Center(
-                    child: Text(
-                      '$row',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 10.sp,
-                        color: _HOColors.textMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                ...section.rightCols.map(
-                  (col) =>
-                      skipRow ? SizedBox(width: 30.w) : _buildSeat('$row$col'),
-                ),
-              ],
-            ),
+          return _buildSeatRow(
+            rowNum: row,
+            leftCols: skipRow
+                ? List.filled(section.leftCols.length, '')
+                : section.leftCols,
+            rightCols: section.rightCols,
           );
         }),
         if (section.amenitiesAfter != null)
-          ...section.amenitiesAfter!.map(_buildAmenityRow),
-        SizedBox(height: 14.h),
+          ...section.amenitiesAfter!.map(
+            (amenity) =>
+                amenity.customLabel != null && amenity.customLabel!.isNotEmpty
+                ? _buildCustomAmenityRow(amenity)
+                : _buildAmenityRow(amenity),
+          ),
+        SizedBox(height: 16.h),
+        if (section.hasExitAfter) _buildExitRow(),
       ],
+    );
+  }
+
+  Widget _buildSectionLabel(String label) {
+    return Text(
+      label,
+      style: GoogleFonts.dmSans(
+        fontSize: 13.sp,
+        fontWeight: FontWeight.w700,
+        color: _HOColors.textDark,
+      ),
+    );
+  }
+
+  Widget _buildColHeaders(List<String> cols) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: cols
+            .map(
+              (value) => value.isEmpty
+                  ? SizedBox(width: 28.w)
+                  : SizedBox(
+                      width: 34.w,
+                      child: Center(
+                        child: Text(
+                          value,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                            color: _HOColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildSeatRow({
+    required int rowNum,
+    required List<String> leftCols,
+    required List<String> rightCols,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 2.h),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ...leftCols.map(
+            (col) =>
+                col.isEmpty ? SizedBox(width: 34.w) : _buildSeat('$rowNum$col'),
+          ),
+          SizedBox(
+            width: 28.w,
+            child: Center(
+              child: Text(
+                '$rowNum',
+                style: GoogleFonts.dmSans(
+                  fontSize: 10.sp,
+                  fontWeight: FontWeight.w600,
+                  color: _HOColors.textMuted,
+                ),
+              ),
+            ),
+          ),
+          ...rightCols.map(
+            (col) =>
+                col.isEmpty ? SizedBox(width: 34.w) : _buildSeat('$rowNum$col'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1788,9 +1928,9 @@ class _HiddenObjectSeatMap extends StatelessWidget {
           ? null
           : () => onSelectableLocationTap!(code),
       child: Container(
-        width: 28.w,
-        height: 30.h,
-        margin: EdgeInsets.symmetric(horizontal: 2.w),
+        width: 30.w,
+        height: 32.h,
+        margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
         child: CustomPaint(painter: _SeatPainter(color: color)),
       ),
     );
@@ -1800,13 +1940,11 @@ class _HiddenObjectSeatMap extends StatelessWidget {
     if (amenity.centerOnly) {
       final location = locationsByCode[amenity.effectiveAmenityId];
       return Padding(
-        padding: EdgeInsets.only(bottom: 8.h),
-        child: Align(
-          child: _buildAmenityBox(
-            id: amenity.effectiveAmenityId,
-            asset: amenity.effectiveSvgAsset,
-            location: location,
-          ),
+        padding: EdgeInsets.symmetric(vertical: 6.h),
+        child: _buildAmenityBox(
+          id: amenity.effectiveAmenityId,
+          asset: amenity.effectiveSvgAsset,
+          location: location,
         ),
       );
     }
@@ -1819,7 +1957,7 @@ class _HiddenObjectSeatMap extends StatelessWidget {
         : locationsByCode[amenity.rightId];
 
     return Padding(
-      padding: EdgeInsets.only(bottom: 8.h),
+      padding: EdgeInsets.symmetric(vertical: 6.h, horizontal: 40.w),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1844,6 +1982,58 @@ class _HiddenObjectSeatMap extends StatelessWidget {
     );
   }
 
+  Widget _buildExitRow() {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 5.h, horizontal: 40.w),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '< Exit',
+            style: GoogleFonts.dmSans(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w500,
+              color: _HOColors.textMuted,
+            ),
+          ),
+          Text(
+            'Exit >',
+            style: GoogleFonts.dmSans(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w500,
+              color: _HOColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomAmenityRow(seat_map_config.AmenityRow amenity) {
+    final location = locationsByCode[amenity.effectiveAmenityId];
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 6.h, horizontal: 40.w),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            amenity.customLabel ?? amenity.effectiveAmenityId,
+            style: GoogleFonts.dmSans(
+              fontSize: 12.sp,
+              color: _HOColors.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          _buildAmenityBox(
+            id: amenity.effectiveAmenityId,
+            asset: amenity.effectiveSvgAsset,
+            location: location,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAmenityBox({
     required String id,
     required String asset,
@@ -1862,17 +2052,17 @@ class _HiddenObjectSeatMap extends StatelessWidget {
           ? null
           : () => onSelectableLocationTap!(id),
       child: Container(
-        width: 46.w,
-        height: 46.h,
+        width: 44.w,
+        height: 44.h,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(12.r),
+          borderRadius: BorderRadius.circular(10.r),
         ),
         child: Center(
           child: SvgPicture.asset(
             asset,
-            width: 20.sp,
-            height: 20.sp,
+            width: 22.sp,
+            height: 22.sp,
             colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
         ),
@@ -1891,25 +2081,40 @@ class _SeatPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
+    final width = size.width;
+    final height = size.height;
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, size.width, size.height * 0.58),
+        Rect.fromLTWH(0, 0, width, height * 0.58),
         const Radius.circular(5),
       ),
       paint,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          -1,
-          size.height * 0.56,
-          size.width + 2,
-          size.height * 0.34,
-        ),
+        Rect.fromLTWH(-1, height * 0.55, width + 2, height * 0.38),
         const Radius.circular(4),
       ),
       paint,
+    );
+
+    final armPaint = Paint()
+      ..color = color.withValues(alpha: 0.85)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-3, height * 0.25, 4, height * 0.45),
+        const Radius.circular(2),
+      ),
+      armPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(width - 1, height * 0.25, 4, height * 0.45),
+        const Radius.circular(2),
+      ),
+      armPaint,
     );
   }
 
