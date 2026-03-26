@@ -1,5 +1,6 @@
 const String kSeatMapToiletAsset = 'assets/icons/toilet.svg';
 const String kSeatMapGalleyAsset = 'assets/icons/chiken.svg';
+const String kSeatMapJumpSeatAsset = 'assets/icons/jump-seat.svg';
 
 class AircraftSeatMap {
   const AircraftSeatMap({
@@ -16,9 +17,9 @@ class AircraftSeatMap {
     Map<String, dynamic> json, {
     required String fallbackName,
   }) {
-    final sections = _asListOfMaps(json['sections'])
-        .map(SeatSection.fromJson)
-        .toList();
+    final sections = _asListOfMaps(
+      json['sections'],
+    ).map(SeatSection.fromJson).toList();
     if (sections.isEmpty) {
       throw const FormatException('Aircraft seat map requires sections');
     }
@@ -62,12 +63,17 @@ class SeatSection {
     final leftCols = _asStringList(json['leftCols']);
     final rightCols = _asStringList(json['rightCols']);
     if (leftCols.isEmpty || rightCols.isEmpty) {
-      throw const FormatException('Seat section requires left and right columns');
+      throw const FormatException(
+        'Seat section requires left and right columns',
+      );
     }
 
     final startRow = _asInt(json['startRow']);
     final endRow = _asInt(json['endRow']);
-    if (startRow == null || endRow == null || startRow <= 0 || endRow < startRow) {
+    if (startRow == null ||
+        endRow == null ||
+        startRow <= 0 ||
+        endRow < startRow) {
       throw const FormatException('Seat section has invalid row range');
     }
 
@@ -111,8 +117,7 @@ class AmenityRow {
   String get effectiveAmenityId =>
       rightId ?? leftId ?? customLabel ?? 'Amenity';
 
-  String get effectiveSvgAsset =>
-      rightSvg ?? leftSvg ?? kSeatMapToiletAsset;
+  String get effectiveSvgAsset => rightSvg ?? leftSvg ?? kSeatMapToiletAsset;
 
   factory AmenityRow.fromJson(Map<String, dynamic> json) {
     return AmenityRow(
@@ -144,6 +149,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             leftId: 'LAV FWD',
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
         hasExitBefore: true,
@@ -197,6 +208,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightId: 'Galley AFT',
             centerOnly: true,
           ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
+          ),
         ],
         hasExitAfter: true,
       ),
@@ -218,6 +235,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             leftId: 'LAV FWD',
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
         hasExitBefore: true,
@@ -251,6 +274,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightId: 'Galley AFT',
             centerOnly: true,
           ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
+          ),
         ],
       ),
     ],
@@ -270,6 +299,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
             centerOnly: true,
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
       ),
@@ -297,6 +332,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightSvg: kSeatMapToiletAsset,
             rightId: 'LAV R',
           ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
+          ),
         ],
       ),
     ],
@@ -317,6 +358,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             leftId: 'LAV FWD',
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
       ),
@@ -349,6 +396,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightId: 'Galley AFT',
             centerOnly: true,
           ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
+          ),
         ],
       ),
     ],
@@ -369,6 +422,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             leftId: 'LAV FWD',
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
       ),
@@ -401,6 +460,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightId: 'Galley AFT',
             centerOnly: true,
           ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
+          ),
         ],
       ),
     ],
@@ -420,6 +485,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
             centerOnly: true,
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
       ),
@@ -447,6 +518,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley AFT',
           ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
+          ),
         ],
       ),
     ],
@@ -467,6 +544,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             leftId: 'LAV FWD',
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley FWD',
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat FWD L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat FWD R',
           ),
         ],
         hasExitBefore: true,
@@ -499,6 +582,12 @@ final Map<String, AircraftSeatMap> defaultAircraftSeatMaps = {
             rightSvg: kSeatMapGalleyAsset,
             rightId: 'Galley AFT',
             centerOnly: true,
+          ),
+          AmenityRow(
+            leftSvg: kSeatMapJumpSeatAsset,
+            leftId: 'Jump Seat AFT L',
+            rightSvg: kSeatMapJumpSeatAsset,
+            rightId: 'Jump Seat AFT R',
           ),
         ],
       ),
@@ -567,11 +656,7 @@ List<Map<String, dynamic>> _asListOfMaps(dynamic value) {
 
   return value
       .whereType<Map>()
-      .map(
-        (entry) => entry.map(
-          (key, item) => MapEntry(key.toString(), item),
-        ),
-      )
+      .map((entry) => entry.map((key, item) => MapEntry(key.toString(), item)))
       .toList();
 }
 

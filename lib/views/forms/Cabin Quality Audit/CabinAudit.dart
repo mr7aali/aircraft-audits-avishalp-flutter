@@ -55,6 +55,14 @@ class AuditCheckItems {
       'Storage Compartments',
       'Floor',
     ],
+    'jump_seat': [
+      'Seat Cushion',
+      'Seat Belt / Harness',
+      'Seat Pocket',
+      'Life Vest Pouch',
+      'Side Console',
+      'Under Seat',
+    ],
     'first_class': [
       'Seat Recline',
       'IFE Screen',
@@ -274,17 +282,24 @@ class CabinAudit extends GetxController {
     final List<String> allValidAreas = [];
 
     for (final section in map.sections) {
-      if (section.skipRows == null) {} // Just to suppress unused warning conceptually
+      if (section.skipRows ==
+          null) {} // Just to suppress unused warning conceptually
       for (int r = section.startRow; r <= section.endRow; r++) {
         if (section.skipRows?.contains(r) ?? false) continue;
-        for (final col in section.leftCols) { if(col.isNotEmpty) allValidAreas.add('$r$col'); }
-        for (final col in section.rightCols) { if(col.isNotEmpty) allValidAreas.add('$r$col'); }
+        for (final col in section.leftCols) {
+          if (col.isNotEmpty) allValidAreas.add('$r$col');
+        }
+        for (final col in section.rightCols) {
+          if (col.isNotEmpty) allValidAreas.add('$r$col');
+        }
       }
       if (section.amenitiesBefore != null) {
         for (final a in section.amenitiesBefore!) {
-          if (a.customLabel != null) { allValidAreas.add(a.effectiveAmenityId); }
-          else if (a.centerOnly) { allValidAreas.add(a.effectiveAmenityId); }
-          else {
+          if (a.customLabel != null) {
+            allValidAreas.add(a.effectiveAmenityId);
+          } else if (a.centerOnly) {
+            allValidAreas.add(a.effectiveAmenityId);
+          } else {
             if (a.leftId != null) allValidAreas.add(a.leftId!);
             if (a.rightId != null) allValidAreas.add(a.rightId!);
           }
@@ -292,9 +307,11 @@ class CabinAudit extends GetxController {
       }
       if (section.amenitiesAfter != null) {
         for (final a in section.amenitiesAfter!) {
-          if (a.customLabel != null) { allValidAreas.add(a.effectiveAmenityId); }
-          else if (a.centerOnly) { allValidAreas.add(a.effectiveAmenityId); }
-          else {
+          if (a.customLabel != null) {
+            allValidAreas.add(a.effectiveAmenityId);
+          } else if (a.centerOnly) {
+            allValidAreas.add(a.effectiveAmenityId);
+          } else {
             if (a.leftId != null) allValidAreas.add(a.leftId!);
             if (a.rightId != null) allValidAreas.add(a.rightId!);
           }
@@ -310,7 +327,8 @@ class CabinAudit extends GetxController {
     final cleanType = selectedCleanType.value.toLowerCase();
     if (cleanType.contains('dcs turn')) {
       targetCount = 8;
-    } else if (cleanType.contains('over night') || cleanType.contains('all day')) {
+    } else if (cleanType.contains('over night') ||
+        cleanType.contains('all day')) {
       targetCount = 20;
     } else if (cleanType.contains('charter')) {
       targetCount = 12;
@@ -380,6 +398,8 @@ class CabinAudit extends GetxController {
     // Galley amenity IDs
     if (idLower.contains('galley')) return 'galley';
 
+    if (idLower.contains('jump seat')) return 'jump_seat';
+
     // Parse row number from seat IDs like "14A", "3B"
     final rowStr = seatId.replaceAll(RegExp(r'[A-Za-z\s]'), '');
     final rowNum = int.tryParse(rowStr) ?? 0;
@@ -425,6 +445,8 @@ class CabinAudit extends GetxController {
         return 'Lav / Restroom';
       case 'galley':
         return 'Galley';
+      case 'jump_seat':
+        return 'Jump Seat';
       case 'first_class':
         return 'First Class';
       case 'comfort':
@@ -740,27 +762,49 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                 ),
                 SizedBox(height: 16.h),
                 Obx(() {
-                  if (_ctrl.mandatoryAreas.isEmpty) return const SizedBox.shrink();
-                  int audited = _ctrl.mandatoryAreas.where((m) => _ctrl.auditedSeats.containsKey(m)).length;
+                  if (_ctrl.mandatoryAreas.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  int audited = _ctrl.mandatoryAreas
+                      .where((m) => _ctrl.auditedSeats.containsKey(m))
+                      .length;
                   bool allDone = audited == _ctrl.mandatoryAreas.length;
                   return Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(14.w),
                     decoration: BoxDecoration(
-                      color: allDone ? _C.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                      color: allDone
+                          ? _C.green.withValues(alpha: 0.1)
+                          : Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12.r),
-                      border: Border.all(color: allDone ? _C.green : Colors.orange),
+                      border: Border.all(
+                        color: allDone ? _C.green : Colors.orange,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(allDone ? Icons.check_circle_rounded : Icons.warning_amber_rounded, color: allDone ? _C.green : Colors.orange.shade800, size: 20.sp),
+                            Icon(
+                              allDone
+                                  ? Icons.check_circle_rounded
+                                  : Icons.warning_amber_rounded,
+                              color: allDone
+                                  ? _C.green
+                                  : Colors.orange.shade800,
+                              size: 20.sp,
+                            ),
                             SizedBox(width: 8.w),
                             Text(
                               'Randomly System Areas ($audited / ${_ctrl.mandatoryAreas.length})',
-                              style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 13.sp, color: allDone ? _C.green : Colors.orange.shade800),
+                              style: GoogleFonts.dmSans(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13.sp,
+                                color: allDone
+                                    ? _C.green
+                                    : Colors.orange.shade800,
+                              ),
                             ),
                           ],
                         ),
@@ -771,18 +815,22 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                           children: _ctrl.mandatoryAreas.map((m) {
                             bool isDone = _ctrl.auditedSeats.containsKey(m);
                             return Text(
-                              m, 
+                              m,
                               style: GoogleFonts.dmSans(
-                                fontSize: 12.sp, 
-                                fontWeight: isDone ? FontWeight.normal : FontWeight.w600,
-                                color: isDone ? _C.green : _C.dark, 
-                                decoration: isDone ? TextDecoration.lineThrough : null,
+                                fontSize: 12.sp,
+                                fontWeight: isDone
+                                    ? FontWeight.normal
+                                    : FontWeight.w600,
+                                color: isDone ? _C.green : _C.dark,
+                                decoration: isDone
+                                    ? TextDecoration.lineThrough
+                                    : null,
                               ),
                             );
                           }).toList(),
-                        )
+                        ),
                       ],
-                    )
+                    ),
                   );
                 }),
                 SizedBox(height: 16.h),
@@ -795,7 +843,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           ),
         ),
         _nextButton(() {
-          final missing = _ctrl.mandatoryAreas.where((m) => !_ctrl.auditedSeats.containsKey(m)).toList();
+          final missing = _ctrl.mandatoryAreas
+              .where((m) => !_ctrl.auditedSeats.containsKey(m))
+              .toList();
           if (missing.isNotEmpty) {
             Get.snackbar(
               'Incomplete',
@@ -828,10 +878,17 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
               Container(
                 width: 10.w,
                 height: 10.h,
-                decoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle, border: Border.all(color: Colors.orange, width: 2)),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.orange, width: 2),
+                ),
               ),
               SizedBox(width: 4.w),
-              Text('Mandatory', style: GoogleFonts.dmSans(fontSize: 10.sp, color: _C.grey)),
+              Text(
+                'Mandatory',
+                style: GoogleFonts.dmSans(fontSize: 10.sp, color: _C.grey),
+              ),
             ],
           ),
         ],
@@ -933,7 +990,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                     border: Border.all(color: _C.border),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -979,7 +1036,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                                 vertical: 6.h,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
+                                color: Colors.red.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8.r),
                               ),
                               child: Text(
@@ -1001,7 +1058,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFF9FAFB),
                             border: Border.all(
-                              color: _C.primary.withOpacity(0.3),
+                              color: _C.primary.withValues(alpha: 0.3),
                               width: 1.5,
                             ),
                             borderRadius: BorderRadius.circular(12.r),
@@ -1015,7 +1072,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                                     style: GoogleFonts.dmSans(
                                       fontSize: 24.sp,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.grey.withOpacity(0.3),
+                                      color: Colors.grey.withValues(alpha: 0.3),
                                     ),
                                   ),
                                 ),
@@ -1070,10 +1127,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                     ),
                   ),
                   Expanded(
-                    child: Container(
-                      width: planeWidth,
-                      color: _C.planeGrey,
-                    ),
+                    child: Container(width: planeWidth, color: _C.planeGrey),
                   ),
                   ClipRect(
                     child: Align(
@@ -1090,22 +1144,27 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                 ],
               ),
             ),
-            
+
             // FOREGROUND SEAT MAP
             Container(
               constraints: BoxConstraints(
-                minHeight: planeWidth * 2.0, // Safely larger than nose+tail combined
+                minHeight:
+                    planeWidth * 2.0, // Safely larger than nose+tail combined
               ),
               child: Column(
                 children: [
                   SizedBox(height: 110.h),
                   _buildCockpitWindows(),
-                  SizedBox(height: 100.h),// Push seats further down the nose shape
+                  SizedBox(
+                    height: 100.h,
+                  ), // Push seats further down the nose shape
 
                   ...aircraftMap.sections.map(
                     (section) => _buildSection(section),
                   ),
-                  SizedBox(height: 320.h), // Keep seats & exit rows out of the narrowing tail section
+                  SizedBox(
+                    height: 320.h,
+                  ), // Keep seats & exit rows out of the narrowing tail section
                 ],
               ),
             ),
@@ -1197,8 +1256,6 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     );
   }
 
-
-
   Widget _buildColHeaders(List<String> cols) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
@@ -1276,7 +1333,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           width: 30.w,
           height: 32.h,
           margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
-          child: CustomPaint(painter: _SeatPainter(color: color, isMandatory: isMandatory)),
+          child: CustomPaint(
+            painter: _SeatPainter(color: color, isMandatory: isMandatory),
+          ),
         ),
       );
     });
@@ -1317,13 +1376,13 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     return Obx(() {
       final status = _ctrl.auditedSeats[id];
       final isMandatory = _ctrl.mandatoryAreas.contains(id);
-      
+
       final color = status == 'pass'
           ? _C.green
           : status == 'fail'
           ? _C.red
           : _C.seatColor;
-          
+
       return GestureDetector(
         onTap: () => _showSeatSheet(id),
         child: Container(
@@ -1332,8 +1391,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(10.r),
-            border: isMandatory && status == null 
-                ? Border.all(color: Colors.orange, width: 2.5) 
+            border: isMandatory && status == null
+                ? Border.all(color: Colors.orange, width: 2.5)
                 : null,
           ),
           child: Center(
@@ -2273,79 +2332,75 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     required List<String> items,
     required ValueChanged<String?> onChanged,
     IconData? suffixIcon,
-  }) =>
-      LayoutBuilder(builder: (context, constraints) {
-        return PopupMenuButton<String>(
-          onSelected: onChanged,
-          offset: Offset(0, 58.h),
-          constraints: BoxConstraints(
-            minWidth: constraints.maxWidth,
-            maxWidth: constraints.maxWidth,
+  }) => LayoutBuilder(
+    builder: (context, constraints) {
+      return PopupMenuButton<String>(
+        onSelected: onChanged,
+        offset: Offset(0, 58.h),
+        constraints: BoxConstraints(
+          minWidth: constraints.maxWidth,
+          maxWidth: constraints.maxWidth,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        itemBuilder: (context) => items
+            .map(
+              (i) => PopupMenuItem(
+                value: i,
+                height: 40.h,
+                child: Text(i, style: _fieldStyle()),
+              ),
+            )
+            .toList(),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+          decoration: BoxDecoration(
+            color: _C.white,
+            borderRadius: BorderRadius.circular(30.r),
+            border: Border.all(color: _C.border),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
+          child: Row(
+            children: [
+              Expanded(child: Text(value, style: _fieldStyle())),
+              Icon(
+                suffixIcon ?? Icons.keyboard_arrow_down_rounded,
+                color: _C.grey,
+                size: 20.sp,
+              ),
+            ],
           ),
-          itemBuilder: (context) => items
-              .map((i) => PopupMenuItem(
-                    value: i,
-                    height: 40.h,
-                    child: Text(i, style: _fieldStyle()),
-                  ))
-              .toList(),
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-            decoration: BoxDecoration(
-              color: _C.white,
-              borderRadius: BorderRadius.circular(30.r),
-              border: Border.all(color: _C.border),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: _fieldStyle(),
-                  ),
-                ),
-                Icon(
-                  suffixIcon ?? Icons.keyboard_arrow_down_rounded,
-                  color: _C.grey,
-                  size: 20.sp,
-                ),
-              ],
-            ),
-          ),
-        );
-      });
-
-  Widget _multilineField(
-    String hint, {
-    TextEditingController? controller,
-  }) => TextField(
-    controller: controller,
-    maxLines: 4,
-    style: _fieldStyle(),
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
-      filled: true,
-      fillColor: _C.white,
-      contentPadding: EdgeInsets.all(16.w),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14.r),
-        borderSide: BorderSide(color: _C.border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14.r),
-        borderSide: BorderSide(color: _C.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14.r),
-        borderSide: BorderSide(color: _C.primary, width: 1.5),
-      ),
-    ),
+        ),
+      );
+    },
   );
+
+  Widget _multilineField(String hint, {TextEditingController? controller}) =>
+      TextField(
+        controller: controller,
+        maxLines: 4,
+        style: _fieldStyle(),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
+          filled: true,
+          fillColor: _C.white,
+          contentPadding: EdgeInsets.all(16.w),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14.r),
+            borderSide: BorderSide(color: _C.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14.r),
+            borderSide: BorderSide(color: _C.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14.r),
+            borderSide: BorderSide(color: _C.primary, width: 1.5),
+          ),
+        ),
+      );
 
   Widget _uploadBox() => GestureDetector(
     onTap: _pickImages,
@@ -2471,7 +2526,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 
     for (final entry in _ctrl.checkItemImages.entries) {
       final files = entry.value.toList();
-      uploadedByKey[entry.key] = files.isEmpty ? const [] : await _uploadFiles(files);
+      uploadedByKey[entry.key] = files.isEmpty
+          ? const []
+          : await _uploadFiles(files);
     }
 
     return uploadedByKey;
@@ -2484,7 +2541,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 
     for (final entry in _checklistIdsByLabel.entries) {
       final checklistLabel = entry.key;
-      final matchedEntries = _ctrl.checkItemStatuses.entries.where((statusEntry) {
+      final matchedEntries = _ctrl.checkItemStatuses.entries.where((
+        statusEntry,
+      ) {
         final separatorIndex = statusEntry.key.indexOf('|');
         if (separatorIndex < 0) {
           return false;
@@ -2551,11 +2610,11 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 
   String _buildAdditionalNotes() {
     final notes = _additionalNotesCtrl.text.trim();
-    
+
     final adhocAreas = _ctrl.auditedSeats.keys
         .where((id) => !_ctrl.mandatoryAreas.contains(id))
         .toList();
-        
+
     final metadata = <String>[
       if (_ctrl.selectedAircraft.value.trim().isNotEmpty)
         'Aircraft: ${_ctrl.selectedAircraft.value.trim()}',
@@ -2605,7 +2664,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 
     try {
       final signatureFileId = await _uploadSignature();
-      final generalPictureFileIds = await _uploadFiles(_selectedImages.toList());
+      final generalPictureFileIds = await _uploadFiles(
+        _selectedImages.toList(),
+      );
       final uploadedImageIdsByKey = await _uploadCheckItemImageIds();
       final responses = await _buildChecklistResponses(uploadedImageIdsByKey);
       final areaResults = _buildDetailedAreaResults(uploadedImageIdsByKey);
@@ -2824,13 +2885,13 @@ class _SeatPainter extends CustomPainter {
       ),
       armPaint,
     );
-    
+
     if (isMandatory && color == _C.seatColor) {
       final borderPaint = Paint()
         ..color = Colors.orange
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5;
-        
+
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(-1, -1, w + 2, h * 0.95 + 2),
@@ -2845,9 +2906,11 @@ class _SeatPainter extends CustomPainter {
   bool shouldRepaint(covariant _SeatPainter old) => old.color != color;
 }
 
+// ignore: unused_element
 class _PlaneSilhouettePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {}
+
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
 }

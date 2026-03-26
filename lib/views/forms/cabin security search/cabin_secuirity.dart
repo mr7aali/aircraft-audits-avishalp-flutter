@@ -474,6 +474,9 @@ class CabinQualityController extends GetxController {
     if (seatId.startsWith('Galley')) {
       return _seatAreaLabel(seatId); // e.g. "Front Galley"
     }
+    if (seatId.startsWith('Jump Seat')) {
+      return _seatAreaLabel(seatId);
+    }
     // Regular seat — unique tag per seat
     return 'Seat $seatId'; // e.g. "Seat 1A", "Seat 3B"
   }
@@ -513,6 +516,9 @@ class CabinQualityController extends GetxController {
     }
     if (seatId.startsWith('Galley')) {
       return seatId.contains('FWD') ? 'Front Galley' : 'Rear Galley';
+    }
+    if (seatId.startsWith('Jump Seat')) {
+      return seatId;
     }
     final rowStr = seatId.replaceAll(RegExp(r'[A-Za-z]'), '');
     final rowNum = int.tryParse(rowStr) ?? 0;
@@ -938,6 +944,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         RegExp(r'^\d+[A-Z]+$', caseSensitive: false).hasMatch(locationCode) ||
         locationCode.startsWith('LAV') ||
         locationCode.startsWith('Galley') ||
+        locationCode.startsWith('Jump Seat') ||
         locationCode == 'Closet';
 
     if (locationId.isEmpty) {
@@ -3062,6 +3069,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     final a = area.toLowerCase();
     if (a.contains('galley')) return Icons.restaurant_rounded;
     if (a.contains('lav')) return Icons.wc_rounded;
+    if (a.contains('jump seat')) return Icons.event_seat_rounded;
     if (a.contains('first class') || a.contains('business')) {
       return Icons.airline_seat_recline_extra_rounded;
     }
@@ -3353,6 +3361,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
     final a = area.toLowerCase();
     if (a.contains('galley')) return Icons.restaurant_rounded;
     if (a.contains('lav')) return Icons.wc_rounded;
+    if (a.contains('jump seat')) return Icons.event_seat_rounded;
     if (a.contains('first class') || a.contains('business')) {
       return Icons.airline_seat_recline_extra_rounded;
     }
