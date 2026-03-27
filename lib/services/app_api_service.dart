@@ -663,7 +663,7 @@ class AppApiService {
   Future<bool> _refreshAccessToken() async {
     final refreshToken = _sessionService.refreshToken;
     if (refreshToken == null || refreshToken.isEmpty) {
-      _sessionService.clear();
+      _expireSession();
       return false;
     }
 
@@ -684,7 +684,7 @@ class AppApiService {
         );
         completer.complete(true);
       } catch (_) {
-        _sessionService.clear();
+        _expireSession();
         completer.complete(false);
       } finally {
         _refreshCompleter = null;
@@ -692,6 +692,20 @@ class AppApiService {
     }();
 
     return completer.future;
+  }
+
+  void _expireSession() {
+    _sessionService.clear();
+
+    if (Get.currentRoute == '/login') {
+      return;
+    }
+
+    Future.microtask(() {
+      if (Get.key.currentState != null && Get.currentRoute != '/login') {
+        Get.offAllNamed('/login');
+      }
+    });
   }
 
   Map<String, dynamic> _asMap(dynamic value) {
