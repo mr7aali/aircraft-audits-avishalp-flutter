@@ -222,6 +222,11 @@ class AppApiService {
     return _asListOfMaps(data);
   }
 
+  Future<List<Map<String, dynamic>>> getFleetAircraft() async {
+    final data = await _send('GET', 'master-data/fleet-aircraft');
+    return _asListOfMaps(data);
+  }
+
   Future<List<Map<String, dynamic>>> getCabinQualityChecklistItems() async {
     final data = await _send(
       'GET',
@@ -330,6 +335,72 @@ class AppApiService {
       'POST',
       'cabin-security-search-trainings',
       body: payload,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> listHiddenObjectAudits({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'hidden-object-audits',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getHiddenObjectAudit(String id) async {
+    final data = await _send('GET', 'hidden-object-audits/$id');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> createHiddenObjectAudit(
+    Map<String, dynamic> payload,
+  ) async {
+    final data = await _send('POST', 'hidden-object-audits', body: payload);
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> confirmHiddenObjectLocation({
+    required String auditId,
+    required String locationId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final data = await _send(
+      'POST',
+      'hidden-object-audits/$auditId/locations/$locationId/confirm',
+      body: payload,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> activateHiddenObjectAudit(String auditId) async {
+    final data = await _send(
+      'POST',
+      'hidden-object-audits/$auditId/activate',
+      body: const {},
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> markHiddenObjectFound({
+    required String auditId,
+    required String locationId,
+  }) async {
+    final data = await _send(
+      'POST',
+      'hidden-object-audits/$auditId/locations/$locationId/found',
+      body: const {},
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> closeHiddenObjectAudit(String auditId) async {
+    final data = await _send(
+      'POST',
+      'hidden-object-audits/$auditId/close',
+      body: const {},
     );
     return _asMap(data);
   }
@@ -469,8 +540,8 @@ class AppApiService {
           : '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}';
       final androidHint =
           !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-              ? ' For Android APKs, confirm the installed release was built with the correct API_BASE_URL and that the phone can open $reachableHost.'
-              : '';
+          ? ' For Android APKs, confirm the installed release was built with the correct API_BASE_URL and that the phone can open $reachableHost.'
+          : '';
       throw ApiException(
         'Unable to reach the backend at $reachableHost. Check the API base URL and server status.$androidHint',
       );

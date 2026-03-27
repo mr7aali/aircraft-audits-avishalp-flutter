@@ -1,13 +1,11 @@
-
 import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditList.dart';
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/CabinSecurityTrainingScreen.dart';
+import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-
 
 // MODELS
 // =====================
@@ -21,7 +19,11 @@ class DrawerMenuItem {
   final String title;
   final IconData icon;
   final List<DrawerSubItem>? subItems;
-  const DrawerMenuItem({required this.title, required this.icon, this.subItems});
+  const DrawerMenuItem({
+    required this.title,
+    required this.icon,
+    this.subItems,
+  });
   bool get hasChildren => subItems != null && subItems!.isNotEmpty;
 }
 
@@ -37,10 +39,12 @@ class AppDrawerController extends GetxController {
     DrawerMenuItem(
       title: 'My Employees',
 
-
       icon: Icons.people_outline_rounded,
       subItems: [
-        DrawerSubItem(title: 'Employee Detail', icon: Icons.person_outline_rounded),
+        DrawerSubItem(
+          title: 'Employee Detail',
+          icon: Icons.person_outline_rounded,
+        ),
         DrawerSubItem(title: 'Directory', icon: Icons.phone_outlined),
       ],
     ),
@@ -50,6 +54,7 @@ class AppDrawerController extends GetxController {
       subItems: [
         DrawerSubItem(title: 'Cabin Quality Audit'),
         DrawerSubItem(title: 'Cabin Security Search Training'),
+        DrawerSubItem(title: 'Hidden Object Audit'),
         DrawerSubItem(title: 'LAV Safety Observation'),
       ],
     ),
@@ -281,15 +286,17 @@ class AppDrawerWidget extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: () {
           _ctrl.setActive(sub.title);
-          
+
           Get.back(); // Close drawer first
 
           if (sub.title == 'LAV Safety Observation') {
-            Get.to(() =>  LavSafetyObservationScreen());
+            Get.to(() => LavSafetyObservationScreen());
           } else if (sub.title == 'Cabin Quality Audit') {
-            Get.to(() =>  CabinQualityAuditListScreen());
+            Get.to(() => CabinQualityAuditListScreen());
           } else if (sub.title == 'Cabin Security Search Training') {
-            Get.to(() =>  CabinSecurityScreen ());
+            Get.to(() => CabinSecurityScreen());
+          } else if (sub.title == 'Hidden Object Audit') {
+            Get.to(() => const HiddenObjectAuditListScreen());
           }
         },
         child: SizedBox(
@@ -312,7 +319,9 @@ class AppDrawerWidget extends StatelessWidget {
                     style: GoogleFonts.dmSans(
                       fontSize: 14.sp,
                       fontWeight: active ? FontWeight.w600 : FontWeight.w600,
-                      color: Colors.white.withValues(alpha: active ? 1.0 : 0.82),
+                      color: Colors.white.withValues(
+                        alpha: active ? 1.0 : 0.82,
+                      ),
                     ),
                   ),
                 ),
@@ -352,30 +361,21 @@ class _BracketLinePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     // Vertical line: from top to last item midpoint
-    final double totalHeight = itemCount * itemHeight;
     final double lastMidY = (itemCount - 1) * itemHeight + itemHeight / 2;
 
     // Draw main vertical line
-    canvas.drawLine(
-      const Offset(0, 0),
-      Offset(0, lastMidY),
-      paint,
-    );
+    canvas.drawLine(const Offset(0, 0), Offset(0, lastMidY), paint);
 
     // Draw horizontal bracket for each item (└ shape)
     for (int i = 0; i < itemCount; i++) {
       final double midY = i * itemHeight + itemHeight / 2;
-      canvas.drawLine(
-        Offset(0, midY),
-        Offset(bracketWidth, midY),
-        paint,
-      );
+      canvas.drawLine(Offset(0, midY), Offset(bracketWidth, midY), paint);
     }
   }
 
   @override
   bool shouldRepaint(covariant _BracketLinePainter old) =>
       old.itemCount != itemCount ||
-          old.itemHeight != itemHeight ||
-          old.color != color;
+      old.itemHeight != itemHeight ||
+      old.color != color;
 }

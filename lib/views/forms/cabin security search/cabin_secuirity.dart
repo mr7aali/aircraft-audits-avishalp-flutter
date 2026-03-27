@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:math' as math;
+// ignore_for_file: unintended_html_in_doc_comment
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -7,11 +7,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:signature/signature.dart';
 import 'package:image_picker/image_picker.dart';
+import 'CabinSecurityTrainingScreen.dart';
 import '../../../data/seat_map_config.dart' as seat_map_config;
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
 import '../../../services/session_service.dart';
-import 'CabinSecurityTrainingScreen.dart';
 
 // ─────────────────────────────────────────────
 // COLORS
@@ -318,6 +318,7 @@ class CabinQualityController extends GetxController {
   final auditedSeats = <String, String>{}.obs;
 
   final shipNumber = ''.obs;
+  final shipOptions = <String>[].obs;
   final supervisorName = 'John Doe'.obs;
   final supervisorRole = 'Supervisor'.obs;
 
@@ -378,21 +379,26 @@ class CabinQualityController extends GetxController {
     if (selectedAreas.isEmpty) return false;
     // Every area must have at least 1 hide-image and all subitems marked
     if (areaCards.any((c) => !c.imageUploaded)) return false;
-    if (areaCards.any((c) => c.subItems.any((s) => s.status.isEmpty)))
+    if (areaCards.any((c) => c.subItems.any((s) => s.status.isEmpty))) {
       return false;
+    }
     return true;
   }
 
   String get validationMessage {
-    if (selectedGate.value == 'Please Select One')
+    if (selectedGate.value == 'Please Select One') {
       return 'Please select a Gate.';
-    if (shipNumber.value.trim().isEmpty) return 'Please enter the Ship #.';
-    if (selectedAreas.isEmpty)
+    }
+    if (shipNumber.value.trim().isEmpty) return 'Please select the Ship #.';
+    if (selectedAreas.isEmpty) {
       return 'Please select at least one area to inspect.';
-    if (areaCards.any((c) => !c.imageUploaded))
+    }
+    if (areaCards.any((c) => !c.imageUploaded)) {
       return 'Please upload a hiding photo for all selected areas.';
-    if (areaCards.any((c) => c.subItems.any((s) => s.status.isEmpty)))
+    }
+    if (areaCards.any((c) => c.subItems.any((s) => s.status.isEmpty))) {
       return 'Please mark Pass or Fail for all subcategory items.';
+    }
     return '';
   }
 
@@ -404,12 +410,17 @@ class CabinQualityController extends GetxController {
     areaSearchCtrl.addListener(_onAreaSearch);
     _initAircraftMaps();
     ever(selectedAircraft, (_) {
-      auditedSeats.clear();
-      selectedSeatIds.clear();
-      areaCards.clear();
-      selectedAreas.clear();
-      imageUploadedMap.clear();
+      resetAuditSelections();
     });
+  }
+
+  void resetAuditSelections() {
+    auditedSeats.clear();
+    selectedSeatIds.clear();
+    areaCards.clear();
+    selectedAreas.clear();
+    mandatoryAreas.clear();
+    imageUploadedMap.clear();
   }
 
   void _onAreaSearch() {
@@ -463,6 +474,9 @@ class CabinQualityController extends GetxController {
     if (seatId.startsWith('Galley')) {
       return _seatAreaLabel(seatId); // e.g. "Front Galley"
     }
+    if (seatId.startsWith('Jump Seat')) {
+      return _seatAreaLabel(seatId);
+    }
     // Regular seat — unique tag per seat
     return 'Seat $seatId'; // e.g. "Seat 1A", "Seat 3B"
   }
@@ -502,6 +516,9 @@ class CabinQualityController extends GetxController {
     }
     if (seatId.startsWith('Galley')) {
       return seatId.contains('FWD') ? 'Front Galley' : 'Rear Galley';
+    }
+    if (seatId.startsWith('Jump Seat')) {
+      return seatId;
     }
     final rowStr = seatId.replaceAll(RegExp(r'[A-Za-z]'), '');
     final rowNum = int.tryParse(rowStr) ?? 0;
@@ -695,7 +712,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   final _ctrl = Get.put(CabinQualityController());
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
-  final _shipCtrl = TextEditingController();
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 3,
     penColor: Colors.black,
@@ -711,6 +727,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   final ImagePicker _picker = ImagePicker();
   final Map<String, String> _gateIdsByLabel = <String, String>{};
   final Map<String, String> _areaIdsByLabel = <String, String>{};
+  final Map<String, String> _fleetAircraftNamesByShip = <String, String>{};
+  final Map<String, String> _hiddenObjectAreaByLocationId = <String, String>{};
+  String? _linkedHiddenObjectAuditId;
   bool _isLoading = true;
   bool _isSubmitting = false;
 
@@ -762,11 +781,13 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         _api.getGates(stationId),
         _api.getSecuritySearchAreas(),
         _api.getAircraftTypes(),
+        _api.getFleetAircraft(),
       ]);
 
       final gates = List<Map<String, dynamic>>.from(results[0]);
       final areas = List<Map<String, dynamic>>.from(results[1]);
       final aircraftTypes = List<Map<String, dynamic>>.from(results[2]);
+      final fleetAircraft = List<Map<String, dynamic>>.from(results[3]);
 
       final gateLabels = <String>['Please Select One'];
       _gateIdsByLabel.clear();
@@ -800,6 +821,35 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         ..addAll(gateLabels);
       if (!_ctrl.gateOptions.contains(_ctrl.selectedGate.value)) {
         _ctrl.selectedGate.value = 'Please Select One';
+      }
+
+      final shipNumbers = <String>[];
+      _fleetAircraftNamesByShip.clear();
+      for (final aircraft in fleetAircraft) {
+        if (aircraft['isActive'] == false) {
+          continue;
+        }
+
+        final shipNumber = aircraft['shipNumber']?.toString().trim() ?? '';
+        final aircraftType = _asMap(aircraft['aircraftType']);
+        final aircraftName = aircraftType['name']?.toString().trim() ?? '';
+        if (shipNumber.isEmpty) {
+          continue;
+        }
+
+        shipNumbers.add(shipNumber);
+        if (aircraftName.isNotEmpty) {
+          _fleetAircraftNamesByShip[shipNumber] = aircraftName;
+        }
+      }
+
+      shipNumbers.sort();
+      _ctrl.shipOptions
+        ..clear()
+        ..addAll(shipNumbers);
+      if (_ctrl.shipNumber.value.isNotEmpty &&
+          !_ctrl.shipOptions.contains(_ctrl.shipNumber.value)) {
+        _ctrl.shipNumber.value = '';
       }
 
       final syncedAircraftMaps = _ctrl._convertSeatMaps(
@@ -855,6 +905,186 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, entry) => MapEntry(key.toString(), entry));
+    }
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _asListOfMaps(dynamic value) {
+    if (value is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+    return value.map(_asMap).toList();
+  }
+
+  String _normalizeShipNumber(String value) => value.trim().toUpperCase();
+
+  void _clearLinkedHiddenObjectAuditState({bool clearSelections = false}) {
+    _linkedHiddenObjectAuditId = null;
+    _hiddenObjectAreaByLocationId.clear();
+    if (clearSelections) {
+      _ctrl.resetAuditSelections();
+    }
+  }
+
+  String _resolveHiddenObjectAreaName(Map<String, dynamic> location) {
+    final locationId = location['id']?.toString() ?? '';
+    final locationCode = location['locationCode']?.toString().trim() ?? '';
+    final locationLabel = location['locationLabel']?.toString().trim() ?? '';
+    final sectionLabel = location['sectionLabel']?.toString().trim() ?? '';
+
+    final isSeatMapAddressable =
+        RegExp(r'^\d+[A-Z]+$', caseSensitive: false).hasMatch(locationCode) ||
+        locationCode.startsWith('LAV') ||
+        locationCode.startsWith('Galley') ||
+        locationCode.startsWith('Jump Seat') ||
+        locationCode == 'Closet';
+
+    if (locationId.isEmpty) {
+      return '';
+    }
+
+    if (isSeatMapAddressable) {
+      if (RegExp(r'^\d+[A-Z]+$', caseSensitive: false).hasMatch(locationCode)) {
+        return _ctrl._tagForSeatId(locationCode);
+      }
+      return _ctrl._seatAreaLabel(locationCode);
+    }
+
+    final fallbackArea = locationLabel.isNotEmpty
+        ? locationLabel
+        : sectionLabel.isNotEmpty
+        ? sectionLabel
+        : 'Hidden Object Target';
+
+    return fallbackArea;
+  }
+
+  Future<bool> _syncHiddenObjectAuditForSearch() async {
+    final shipNumber = _normalizeShipNumber(_ctrl.shipNumber.value);
+    if (shipNumber.isEmpty) {
+      return false;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await _api.listHiddenObjectAudits(
+        queryParameters: {
+          'shipNumber': shipNumber,
+          'status': 'ACTIVE',
+          'page': 1,
+          'limit': 20,
+        },
+      );
+      final items = _asListOfMaps(response['items']);
+      final matchedAudits = items
+          .where(
+            (item) =>
+                _normalizeShipNumber(item['shipNumber']?.toString() ?? '') ==
+                shipNumber,
+          )
+          .toList();
+
+      if (matchedAudits.length > 1) {
+        Get.snackbar(
+          'Hidden Object Audit Conflict',
+          'More than one active hidden object audit was found for ship $shipNumber. Please close the duplicate session first.',
+          backgroundColor: _C.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+        return false;
+      }
+
+      final matchedAudit = matchedAudits.firstOrNull;
+
+      if (matchedAudit == null) {
+        _clearLinkedHiddenObjectAuditState();
+        return true;
+      }
+
+      final detail = await _api.getHiddenObjectAudit(
+        matchedAudit['id']?.toString() ?? '',
+      );
+      final aircraftType = _asMap(detail['aircraftType']);
+      final aircraftName = aircraftType['name']?.toString().trim() ?? '';
+      final activeLocations = _asListOfMaps(
+        detail['locations'],
+      ).where((location) => location['status']?.toString() == 'BLUE').toList();
+
+      if (aircraftName.isEmpty || activeLocations.isEmpty) {
+        Get.snackbar(
+          'Hidden Object Audit Required',
+          'The active hidden object audit is missing searchable locations.',
+          backgroundColor: _C.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+        return false;
+      }
+
+      if (_ctrl.aircraftOptions.isNotEmpty &&
+          !_ctrl.aircraftOptions.contains(aircraftName)) {
+        Get.snackbar(
+          'Aircraft Mismatch',
+          'The linked hidden object audit uses an aircraft type that is not available in this search form.',
+          backgroundColor: _C.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+        return false;
+      }
+
+      _clearLinkedHiddenObjectAuditState(clearSelections: true);
+      _ctrl.shipNumber.value = shipNumber;
+      _ctrl.selectedAircraft.value = aircraftName;
+
+      for (final location in activeLocations) {
+        final locationId = location['id']?.toString() ?? '';
+        final areaName = _resolveHiddenObjectAreaName(location);
+        if (locationId.isEmpty || areaName.isEmpty) {
+          continue;
+        }
+        _hiddenObjectAreaByLocationId[locationId] = areaName;
+      }
+
+      _linkedHiddenObjectAuditId = detail['id']?.toString();
+      return _linkedHiddenObjectAuditId != null &&
+          _hiddenObjectAreaByLocationId.isNotEmpty;
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Hidden Object Audit',
+        error.message,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _buildHiddenObjectLocationResults() {
+    final results = <Map<String, dynamic>>[];
+    for (final entry in _hiddenObjectAreaByLocationId.entries) {
+      final card = _ctrl.areaCards.firstWhereOrNull(
+        (item) => item.areaName == entry.value,
+      );
+      final found = card?.computedStatus == 'pass';
+      results.add({'locationId': entry.key, 'found': found});
+    }
+
+    return results;
   }
 
   Future<void> _showAreaCardSheetForSeat(String id) async {
@@ -1006,40 +1236,40 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                         ),
                         SizedBox(height: 10.h),
                         if (!_ctrl.mandatoryAreas.contains(areaName))
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              _ctrl.removeSeatSelection(id);
-                              Navigator.of(sheetContext).pop();
-                            },
-                            icon: Icon(
-                              Icons.remove_circle_outline_rounded,
-                              color: _C.red,
-                              size: 18.sp,
-                            ),
-                            label: Text(
-                              isSeatArea
-                                  ? 'Remove this seat from selection'
-                                  : 'Remove this area from selection',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w600,
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                _ctrl.removeSeatSelection(id);
+                                Navigator.of(sheetContext).pop();
+                              },
+                              icon: Icon(
+                                Icons.remove_circle_outline_rounded,
                                 color: _C.red,
+                                size: 18.sp,
                               ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(vertical: 14.h),
-                              side: BorderSide(
-                                color: _C.red.withValues(alpha: 0.35),
+                              label: Text(
+                                isSeatArea
+                                    ? 'Remove this seat from selection'
+                                    : 'Remove this area from selection',
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: _C.red,
+                                ),
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16.r),
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.symmetric(vertical: 14.h),
+                                side: BorderSide(
+                                  color: _C.red.withValues(alpha: 0.35),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16.r),
+                                ),
+                                backgroundColor: _C.red.withValues(alpha: 0.03),
                               ),
-                              backgroundColor: _C.red.withValues(alpha: 0.03),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -1058,7 +1288,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   @override
   void dispose() {
-    _shipCtrl.dispose();
     _signatureController.dispose();
     super.dispose();
   }
@@ -1131,7 +1360,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
             ),
           ),
         ),
-        _nextButton(() {
+        _nextButton(() async {
           if (_ctrl.selectedGate.value == 'Please Select One') {
             Get.snackbar(
               'Incomplete',
@@ -1146,7 +1375,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           if (_ctrl.shipNumber.value.trim().isEmpty) {
             Get.snackbar(
               'Incomplete',
-              'Please enter the Ship # before continuing.',
+              'Please select the Ship # before continuing.',
               backgroundColor: _C.red,
               colorText: Colors.white,
               snackPosition: SnackPosition.TOP,
@@ -1154,15 +1383,12 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
             );
             return;
           }
-          if (_ctrl.mandatoryAreas.isEmpty) {
-            final allAreas = List<String>.from(kCabinAreas);
-            allAreas.shuffle(math.Random());
-            final picked = allAreas.take(5).toList();
-            _ctrl.mandatoryAreas.addAll(picked);
-            for (final area in picked) {
-              _ctrl.addArea(area);
-            }
+
+          final synced = await _syncHiddenObjectAuditForSearch();
+          if (!synced) {
+            return;
           }
+
           setState(() => _step = 1);
         }),
       ],
@@ -1183,7 +1409,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           height: 180.h,
           width: double.infinity,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
+          errorBuilder: (context, error, stackTrace) => Container(
             height: 180.h,
             decoration: BoxDecoration(
               color: _C.infoBg,
@@ -1295,10 +1521,29 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                   ),
                   SizedBox(height: 14.h),
                   _label('Ship # *'),
-                  _pillTextField(
-                    controller: _shipCtrl,
-                    hint: 'Enter ship number',
-                    onChanged: (v) => _ctrl.shipNumber.value = v,
+                  Obx(
+                    () => _pillDropdown(
+                      value: _ctrl.shipNumber.value.isEmpty
+                          ? (_ctrl.shipOptions.isEmpty
+                                ? 'No ships available'
+                                : 'Select ship number')
+                          : _ctrl.shipNumber.value,
+                      items: _ctrl.shipOptions,
+                      onChanged: (v) {
+                        final shipNumber = v?.trim() ?? '';
+                        _ctrl.shipNumber.value = shipNumber;
+                        _clearLinkedHiddenObjectAuditState(
+                          clearSelections: true,
+                        );
+
+                        final aircraftName =
+                            _fleetAircraftNamesByShip[shipNumber];
+                        if (aircraftName != null &&
+                            _ctrl.aircraftOptions.contains(aircraftName)) {
+                          _ctrl.selectedAircraft.value = aircraftName;
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -1465,8 +1710,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
                   // Dropdown suggestions
                   Obx(() {
-                    if (!_ctrl.showAreaDropdown.value)
+                    if (!_ctrl.showAreaDropdown.value) {
                       return const SizedBox.shrink();
+                    }
                     return Container(
                       constraints: BoxConstraints(maxHeight: 180.h),
                       decoration: BoxDecoration(
@@ -1533,7 +1779,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                           margin: EdgeInsets.only(bottom: 12.h),
                           padding: EdgeInsets.all(12.w),
                           decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
+                            color: Colors.orange.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8.r),
                             border: Border.all(color: Colors.orange),
                           ),
@@ -1542,26 +1788,41 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 20.sp),
+                                  Icon(
+                                    Icons.location_searching_rounded,
+                                    color: Colors.orange.shade800,
+                                    size: 20.sp,
+                                  ),
                                   SizedBox(width: 8.w),
                                   Text(
-                                    'Subcategories (Hiding Places)',
-                                    style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 13.sp, color: Colors.orange.shade800),
+                                    'Selected Search Areas',
+                                    style: GoogleFonts.dmSans(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13.sp,
+                                      color: Colors.orange.shade800,
+                                    ),
                                   ),
                                 ],
                               ),
                               SizedBox(height: 4.h),
-                              Text('The system has randomly selected 5 areas. You must hide assets in these places and check them.',
-                                style: GoogleFonts.dmSans(fontSize: 12.sp, color: Colors.orange.shade800, height: 1.4),
+                              Text(
+                                'Review the areas you selected for inspection. Tap seats on the map or use search to add more areas.',
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 12.sp,
+                                  color: Colors.orange.shade800,
+                                  height: 1.4,
+                                ),
                               ),
                             ],
-                          )
+                          ),
                         ),
                         Wrap(
                           spacing: 8.w,
                           runSpacing: 8.h,
                           children: _ctrl.selectedAreas.map((area) {
-                            final isMandatory = _ctrl.mandatoryAreas.contains(area);
+                            final isMandatory = _ctrl.mandatoryAreas.contains(
+                              area,
+                            );
                             return Container(
                               padding: EdgeInsets.symmetric(
                                 horizontal: 12.w,
@@ -1570,7 +1831,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                               decoration: BoxDecoration(
                                 color: _C.primary,
                                 borderRadius: BorderRadius.circular(20.r),
-                                border: isMandatory ? Border.all(color: Colors.orange, width: 2) : null,
+                                border: isMandatory
+                                    ? Border.all(color: Colors.orange, width: 2)
+                                    : null,
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -1639,7 +1902,19 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                     () => _pillDropdown(
                       value: _ctrl.selectedAircraft.value,
                       items: _ctrl.aircraftOptions,
-                      onChanged: (v) => _ctrl.selectedAircraft.value = v!,
+                      onChanged: (v) {
+                        if (_linkedHiddenObjectAuditId != null) {
+                          Get.snackbar(
+                            'Aircraft Locked',
+                            'The aircraft type is locked to the active hidden object audit.',
+                            backgroundColor: _C.red,
+                            colorText: Colors.white,
+                            snackPosition: SnackPosition.TOP,
+                          );
+                          return;
+                        }
+                        _ctrl.selectedAircraft.value = v!;
+                      },
                       suffixIcon: Icons.search_rounded,
                     ),
                   ),
@@ -2046,6 +2321,14 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       final generalPictureFileIds = await _uploadImageFiles(
         _generalImages.toList(),
       );
+      final hiddenObjectLocationResults = _buildHiddenObjectLocationResults();
+
+      if (_linkedHiddenObjectAuditId != null &&
+          hiddenObjectLocationResults.isEmpty) {
+        throw const ApiException(
+          'The linked hidden object audit could not be synchronized with this search report.',
+        );
+      }
 
       final areaResults = <Map<String, dynamic>>[];
       final detailedAreaResults = <Map<String, dynamic>>[];
@@ -2088,6 +2371,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         'gateId': gateId,
         'areaResults': areaResults,
         'detailedAreaResults': detailedAreaResults,
+        if (_linkedHiddenObjectAuditId != null)
+          'hiddenObjectAuditId': _linkedHiddenObjectAuditId,
+        if (hiddenObjectLocationResults.isNotEmpty)
+          'hiddenObjectLocationResults': hiddenObjectLocationResults,
         if (_ctrl.otherFindingsCtrl.text.trim().isNotEmpty)
           'otherFindings': _ctrl.otherFindingsCtrl.text.trim(),
         if (_buildSubmissionNotes() != null)
@@ -2098,6 +2385,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
       if (Get.isRegistered<CabinSecurityController>()) {
         await Get.find<CabinSecurityController>().loadTrainings();
+      }
+
+      if (!mounted) {
+        return;
       }
 
       showDialog(
@@ -2402,10 +2693,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                     ),
                   ),
                   Expanded(
-                    child: Container(
-                      width: planeWidth,
-                      color: _C.planeGrey,
-                    ),
+                    child: Container(width: planeWidth, color: _C.planeGrey),
                   ),
                   ClipRect(
                     child: Align(
@@ -2425,9 +2713,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
             // FOREGROUND SEAT MAP
             Container(
-              constraints: BoxConstraints(
-                minHeight: planeWidth * 2.0,
-              ),
+              constraints: BoxConstraints(minHeight: planeWidth * 2.0),
               child: Column(
                 children: [
                   SizedBox(height: 110.h),
@@ -2522,7 +2808,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       ],
     );
   }
-
 
   Widget _buildColHeaders(List<String> cols) {
     return Padding(
@@ -2784,8 +3069,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     final a = area.toLowerCase();
     if (a.contains('galley')) return Icons.restaurant_rounded;
     if (a.contains('lav')) return Icons.wc_rounded;
-    if (a.contains('first class') || a.contains('business'))
+    if (a.contains('jump seat')) return Icons.event_seat_rounded;
+    if (a.contains('first class') || a.contains('business')) {
       return Icons.airline_seat_recline_extra_rounded;
+    }
     if (a.contains('comfort')) return Icons.airline_seat_recline_normal_rounded;
     if (a.contains('cabin') || a.contains('main')) return Icons.weekend_rounded;
     if (a.contains('overhead')) return Icons.inventory_2_outlined;
@@ -2837,85 +3124,54 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     ),
   );
 
-  Widget _pillTextField({
-    required TextEditingController controller,
-    required String hint,
-    void Function(String)? onChanged,
-  }) => TextField(
-    controller: controller,
-    onChanged: onChanged,
-    style: _fieldStyle(),
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
-      filled: true,
-      fillColor: _C.white,
-      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30.r),
-        borderSide: BorderSide(color: _C.border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30.r),
-        borderSide: BorderSide(color: _C.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30.r),
-        borderSide: BorderSide(color: _C.primary, width: 1.5),
-      ),
-    ),
-  );
-
   Widget _pillDropdown({
     required String value,
     required List<String> items,
     required ValueChanged<String?> onChanged,
     IconData? suffixIcon,
-  }) =>
-      LayoutBuilder(builder: (context, constraints) {
-        return PopupMenuButton<String>(
-          onSelected: onChanged,
-          offset: Offset(0, 58.h),
-          constraints: BoxConstraints(
-            minWidth: constraints.maxWidth,
-            maxWidth: constraints.maxWidth,
+  }) => LayoutBuilder(
+    builder: (context, constraints) {
+      return PopupMenuButton<String>(
+        onSelected: onChanged,
+        offset: Offset(0, 58.h),
+        constraints: BoxConstraints(
+          minWidth: constraints.maxWidth,
+          maxWidth: constraints.maxWidth,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        itemBuilder: (context) => items
+            .map(
+              (i) => PopupMenuItem(
+                value: i,
+                height: 40.h,
+                child: Text(i, style: _fieldStyle()),
+              ),
+            )
+            .toList(),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+          decoration: BoxDecoration(
+            color: _C.white,
+            borderRadius: BorderRadius.circular(30.r),
+            border: Border.all(color: _C.border),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
+          child: Row(
+            children: [
+              Expanded(child: Text(value, style: _fieldStyle())),
+              Icon(
+                suffixIcon ?? Icons.keyboard_arrow_down_rounded,
+                color: _C.grey,
+                size: 20.sp,
+              ),
+            ],
           ),
-          itemBuilder: (context) => items
-              .map((i) => PopupMenuItem(
-                    value: i,
-                    height: 40.h,
-                    child: Text(i, style: _fieldStyle()),
-                  ))
-              .toList(),
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-            decoration: BoxDecoration(
-              color: _C.white,
-              borderRadius: BorderRadius.circular(30.r),
-              border: Border.all(color: _C.border),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: _fieldStyle(),
-                  ),
-                ),
-                Icon(
-                  suffixIcon ?? Icons.keyboard_arrow_down_rounded,
-                  color: _C.grey,
-                  size: 20.sp,
-                ),
-              ],
-            ),
-          ),
-        );
-      });
+        ),
+      );
+    },
+  );
 
   Widget _multilineField(String hint, {TextEditingController? controller}) =>
       TextField(
@@ -3080,7 +3336,9 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
   Future<void> _pickHideImages() async {
     final files = await widget.pickImages();
     if (files.isEmpty) return;
-    for (final f in files) ctrl.addAreaImage(card.areaName, f);
+    for (final f in files) {
+      ctrl.addAreaImage(card.areaName, f);
+    }
     setState(() {});
   }
 
@@ -3088,7 +3346,9 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
   Future<void> _pickAuditImages() async {
     final files = await widget.pickImages();
     if (files.isEmpty) return;
-    for (final f in files) ctrl.addAreaAuditImage(card.areaName, f);
+    for (final f in files) {
+      ctrl.addAreaAuditImage(card.areaName, f);
+    }
     setState(() {});
   }
 
@@ -3101,8 +3361,10 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
     final a = area.toLowerCase();
     if (a.contains('galley')) return Icons.restaurant_rounded;
     if (a.contains('lav')) return Icons.wc_rounded;
-    if (a.contains('first class') || a.contains('business'))
+    if (a.contains('jump seat')) return Icons.event_seat_rounded;
+    if (a.contains('first class') || a.contains('business')) {
       return Icons.airline_seat_recline_extra_rounded;
+    }
     if (a.contains('comfort')) return Icons.airline_seat_recline_normal_rounded;
     if (a.contains('cabin') || a.contains('main')) return Icons.weekend_rounded;
     if (a.contains('overhead')) return Icons.inventory_2_outlined;
@@ -3214,7 +3476,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                     ),
                     SizedBox(width: 8.w),
                     Text(
-                      'Upload photo of hidden asset *',
+                      'Upload reference photo *',
                       style: GoogleFonts.dmSans(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w600,
@@ -3250,7 +3512,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                         Text(
                           imageUploaded
                               ? 'Add more photos'
-                              : 'Upload hiding photo (max 100MB)',
+                              : 'Upload reference photo (max 100MB)',
                           style: GoogleFonts.dmSans(
                             fontSize: 13.sp,
                             color: imageUploaded ? _C.green : _C.grey,
@@ -3590,7 +3852,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                           SizedBox(width: 6.w),
                           Expanded(
                             child: Text(
-                              'Team failed to find hidden asset(s) in this area.',
+                              'This area failed the security search checks.',
                               style: GoogleFonts.dmSans(
                                 fontSize: 11.sp,
                                 color: _C.red,
@@ -3697,6 +3959,7 @@ class _SeatPainter extends CustomPainter {
   bool shouldRepaint(covariant _SeatPainter old) => old.color != color;
 }
 
+// ignore: unused_element
 class _PlaneSilhouettePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {}
