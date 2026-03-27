@@ -28,8 +28,8 @@ class AppApiService {
     final defaultHost = kReleaseMode
         ? 'https://sensitive-united-contracts-governor.trycloudflare.com/api'
         : !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-        ? 'http://10.0.2.2:3000/api'
-        : 'http://localhost:3000/api';
+        ? 'https://sensitive-united-contracts-governor.trycloudflare.com/api'
+        : 'https://sensitive-united-contracts-governor.trycloudflare.com/api';
     return _normalizeBaseUrl(defaultHost);
   }
 
