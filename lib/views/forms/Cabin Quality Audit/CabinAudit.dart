@@ -503,6 +503,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     try {
       final picked = await (picker ?? _picker).pickImage(
         source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
         imageQuality: 85,
         maxWidth: 1800,
       );

@@ -696,7 +696,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   // ── 100MB image validation ────────────────────────────
   Future<List<PendingUploadFile>> _pickValidatedImages() async {
-    final picked = await _picker.pickImage(source: ImageSource.camera);
+    final picked = await _picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.rear,
+    );
     final List<PendingUploadFile> valid = [];
     final List<String> oversized = [];
 

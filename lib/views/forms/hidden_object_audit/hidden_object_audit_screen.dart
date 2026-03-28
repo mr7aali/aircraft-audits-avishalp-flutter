@@ -1468,6 +1468,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
     try {
       final picked = await widget.picker.pickImage(
         source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
         imageQuality: 85,
         maxWidth: 1280,
         maxHeight: 1280,
