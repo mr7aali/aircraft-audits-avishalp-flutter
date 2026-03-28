@@ -24,6 +24,7 @@ class _HOColors {
   static const Color blue = Color(0xFF2196F3);
   static const Color green = Color(0xFF22C55E);
   static const Color red = Color(0xFFEF4444);
+  static const Color purple = Color(0xFF8B5CF6);
 }
 
 class HiddenObjectAuditListItem {
@@ -39,6 +40,7 @@ class HiddenObjectAuditListItem {
     required this.blue,
     required this.green,
     required this.red,
+    required this.purple,
   });
 
   final String id;
@@ -52,6 +54,7 @@ class HiddenObjectAuditListItem {
   final int blue;
   final int green;
   final int red;
+  final int purple;
 
   factory HiddenObjectAuditListItem.fromMap(Map<String, dynamic> map) {
     final counts = _asMap(map['counts']);
@@ -69,6 +72,7 @@ class HiddenObjectAuditListItem {
       blue: _toInt(counts['blue']),
       green: _toInt(counts['green']),
       red: _toInt(counts['red']),
+      purple: _toInt(counts['purple']),
     );
   }
 }
@@ -194,6 +198,7 @@ class HiddenObjectAuditDetail {
     required this.blue,
     required this.green,
     required this.red,
+    required this.purple,
     required this.canActivate,
     required this.canClose,
     required this.locations,
@@ -214,6 +219,7 @@ class HiddenObjectAuditDetail {
   final int blue;
   final int green;
   final int red;
+  final int purple;
   final bool canActivate;
   final bool canClose;
   final List<HiddenObjectLocation> locations;
@@ -259,6 +265,7 @@ class HiddenObjectAuditDetail {
       blue: _toInt(counts['blue']),
       green: _toInt(counts['green']),
       red: _toInt(counts['red']),
+      purple: _toInt(counts['purple']),
       canActivate: map['canActivate'] == true,
       canClose: map['canClose'] == true,
       locations: _asListOfMaps(
@@ -441,6 +448,11 @@ class _HiddenObjectAuditListScreenState
                               _metricChip('Blue', item.blue, _HOColors.blue),
                               _metricChip('Green', item.green, _HOColors.green),
                               _metricChip('Red', item.red, _HOColors.red),
+                              _metricChip(
+                                'Purple',
+                                item.purple,
+                                _HOColors.purple,
+                              ),
                             ],
                           ),
                         ],
@@ -1260,6 +1272,7 @@ class _HiddenObjectAuditWorkflowScreenState
               _metricChip('Blue', detail.blue, _HOColors.blue),
               _metricChip('Green', detail.green, _HOColors.green),
               _metricChip('Red', detail.red, _HOColors.red),
+              _metricChip('Purple', detail.purple, _HOColors.purple),
             ],
           ),
         ],
@@ -1272,7 +1285,7 @@ class _HiddenObjectAuditWorkflowScreenState
         ? 'Tap each orange location, choose a sub-location, and upload a hiding photo.'
         : detail.status == 'ACTIVE'
         ? 'Blue locations are now searched from Cabin Security Search Training. This screen stays in setup and status mode only.'
-        : 'This audit is closed. Green means found, red means not found.';
+        : 'This audit is closed. Green means found, red means not found, and purple means an object was found in another location.';
 
     return Container(
       padding: EdgeInsets.all(16.w),
@@ -1334,6 +1347,7 @@ class _HiddenObjectAuditWorkflowScreenState
           _legendItem('Blue', _HOColors.blue),
           _legendItem('Green', _HOColors.green),
           _legendItem('Red', _HOColors.red),
+          _legendItem('Purple', _HOColors.purple),
         ],
       ),
     );
@@ -1678,7 +1692,10 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                       ),
                     ),
                     TextSpan(
-                      text: widget.location.subLocation.replaceAll(' ', '\u00A0'),
+                      text: widget.location.subLocation.replaceAll(
+                        ' ',
+                        '\u00A0',
+                      ),
                       style: GoogleFonts.dmSans(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w700,
@@ -1697,7 +1714,9 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
               ),
           ] else ...[
             Text(
-              widget.location.subLocation.isEmpty
+              widget.location.status == 'PURPLE'
+                  ? 'An object was found here even though this location was not assigned.'
+                  : widget.location.subLocation.isEmpty
                   ? 'No extra details were recorded for this location.'
                   : 'Sub-location: ${widget.location.subLocation}',
               style: GoogleFonts.dmSans(
@@ -2204,6 +2223,8 @@ Color _statusColor(String status) {
     case 'CLOSED':
     case 'FAIL':
       return _HOColors.red;
+    case 'PURPLE':
+      return _HOColors.purple;
     default:
       return _HOColors.seat;
   }
