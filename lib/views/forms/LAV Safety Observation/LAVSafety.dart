@@ -570,6 +570,8 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                               ?.trim();
                           final checklistCode = (item['code'] as String?)
                               ?.trim();
+                          final checklistDescription =
+                              (item['description'] as String?)?.trim();
 
                           return _buildAuditRow(
                             checklistLabel?.isNotEmpty == true
@@ -578,6 +580,9 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                                 ? checklistCode!
                                 : 'Checklist Item',
                             checklistItemId,
+                            subtitle: checklistDescription?.isNotEmpty == true
+                                ? checklistDescription
+                                : null,
                             isLast: index == _checklistItems.length - 1,
                             showImageUpload: true,
                           );
