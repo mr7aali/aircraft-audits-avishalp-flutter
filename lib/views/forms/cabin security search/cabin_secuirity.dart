@@ -34,26 +34,6 @@ class _C {
   static const Color warnBorder = Color(0xFFFFCC02);
 }
 
-// ─────────────────────────────────────────────
-// PREDEFINED AREAS
-// ─────────────────────────────────────────────
-const List<String> kCabinAreas = [
-  'Front Galley',
-  'Rear Galley',
-  'First Class',
-  'Delta Comfort',
-  'Main Cabin',
-  'FWD LAV',
-  'MID LAV L',
-  'MID LAV R',
-  'AFT LAV L',
-  'AFT LAV R',
-  'Overhead Bins',
-  'Seat Pockets',
-  'Crew Rest Area',
-  'Emergency Equipment',
-];
-
 // Max image size: 100MB
 const int kMaxImageBytes = 100 * 1024 * 1024;
 
@@ -323,10 +303,6 @@ class CabinQualityController extends GetxController {
 
   final RxList<String> selectedAreas = <String>[].obs;
   final RxList<AreaCard> areaCards = <AreaCard>[].obs;
-  final areaSearchCtrl = TextEditingController();
-  final RxList<String> availableAreas = <String>[].obs;
-  final RxList<String> filteredAreas = <String>[].obs;
-  final RxBool showAreaDropdown = false.obs;
 
   final RxSet<String> selectedSeatIds = <String>{}.obs;
   final RxSet<String> mandatoryAreas = <String>{}.obs;
@@ -387,7 +363,7 @@ class CabinQualityController extends GetxController {
       return 'Please select at least one area to inspect.';
     }
     if (areaCards.any((c) => !c.imageUploaded)) {
-      return 'Please upload a hiding photo for all selected areas.';
+      return 'Please capture a reference photo for all selected areas.';
     }
     return '';
   }
@@ -395,9 +371,6 @@ class CabinQualityController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    availableAreas.assignAll(kCabinAreas);
-    filteredAreas.assignAll(availableAreas);
-    areaSearchCtrl.addListener(_onAreaSearch);
     _initAircraftMaps();
     ever(selectedAircraft, (_) {
       resetAuditSelections();
@@ -411,15 +384,6 @@ class CabinQualityController extends GetxController {
     selectedAreas.clear();
     mandatoryAreas.clear();
     imageUploadedMap.clear();
-  }
-
-  void _onAreaSearch() {
-    final q = areaSearchCtrl.text.toLowerCase();
-    filteredAreas.assignAll(
-      q.isEmpty
-          ? availableAreas
-          : availableAreas.where((a) => a.toLowerCase().contains(q)),
-    );
   }
 
   AreaCard ensureAreaCard(String area) {
@@ -438,12 +402,6 @@ class CabinQualityController extends GetxController {
     final card = AreaCard(areaName: area);
     areaCards.add(card);
     return card;
-  }
-
-  void addArea(String area) {
-    ensureAreaCard(area);
-    areaSearchCtrl.clear();
-    showAreaDropdown.value = false;
   }
 
   void removeArea(String area) {
@@ -680,7 +638,6 @@ class CabinQualityController extends GetxController {
 
   @override
   void onClose() {
-    areaSearchCtrl.dispose();
     otherFindingsCtrl.dispose();
     additionalNotesCtrl.dispose();
     super.onClose();
@@ -731,15 +688,15 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   // ── 100MB image validation ────────────────────────────
   Future<List<File>> _pickValidatedImages() async {
-    final picked = await _picker.pickMultiImage();
+    final picked = await _picker.pickImage(source: ImageSource.camera);
     final List<File> valid = [];
     final List<String> oversized = [];
 
-    for (final x in picked) {
-      final file = File(x.path);
+    if (picked != null) {
+      final file = File(picked.path);
       final size = await file.length();
       if (size > kMaxImageBytes) {
-        oversized.add(x.name);
+        oversized.add(picked.name);
       } else {
         valid.add(file);
       }
@@ -795,14 +752,12 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       }
 
       _areaIdsByLabel.clear();
-      final areaLabels = <String>[];
       for (final area in areas) {
         final areaId = area['id']?.toString() ?? '';
         final label = area['label']?.toString().trim() ?? '';
         if (areaId.isEmpty || label.isEmpty) {
           continue;
         }
-        areaLabels.add(label);
         _areaIdsByLabel[label] = areaId;
       }
 
@@ -854,13 +809,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       if (_ctrl.aircraftOptions.isNotEmpty &&
           !_ctrl.aircraftOptions.contains(_ctrl.selectedAircraft.value)) {
         _ctrl.selectedAircraft.value = _ctrl.aircraftOptions.first;
-      }
-
-      if (areaLabels.isNotEmpty) {
-        _ctrl.availableAreas
-          ..clear()
-          ..addAll(areaLabels);
-        _ctrl.filteredAreas.assignAll(areaLabels);
       }
 
       if (_session.fullName.isNotEmpty) {
@@ -1589,7 +1537,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           if (_ctrl.areaCards.any((c) => !c.imageUploaded)) {
             Get.snackbar(
               'Missing Photo',
-              'Please upload a hiding photo for every selected area before continuing.',
+              'Please capture a reference photo for every selected area before continuing.',
               backgroundColor: _C.red,
               colorText: Colors.white,
               snackPosition: SnackPosition.TOP,
@@ -1690,67 +1638,13 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 1. Search & Select Area (TOP) ─────────────
-                  _label('Search & Select Area *'),
-                  SizedBox(height: 8.h),
-                  _buildAreaSearchField(),
-                  SizedBox(height: 6.h),
-
-                  // Dropdown suggestions
-                  Obx(() {
-                    if (!_ctrl.showAreaDropdown.value) {
-                      return const SizedBox.shrink();
-                    }
-                    return Container(
-                      constraints: BoxConstraints(maxHeight: 180.h),
-                      decoration: BoxDecoration(
-                        color: _C.white,
-                        borderRadius: BorderRadius.circular(12.r),
-                        border: Border.all(color: _C.border),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ListView(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        children: _ctrl.filteredAreas.map((area) {
-                          final already = _ctrl.selectedAreas.contains(area);
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              area,
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13.sp,
-                                color: already ? _C.grey : _C.dark,
-                              ),
-                            ),
-                            trailing: already
-                                ? Icon(
-                                    Icons.check_rounded,
-                                    color: _C.primary,
-                                    size: 16.sp,
-                                  )
-                                : null,
-                            onTap: already ? null : () => _ctrl.addArea(area),
-                          );
-                        }).toList(),
-                      ),
-                    );
-                  }),
-                  SizedBox(height: 12.h),
-
                   // Area tag chips
                   Obx(() {
                     if (_ctrl.selectedAreas.isEmpty) {
                       return Padding(
                         padding: EdgeInsets.only(bottom: 4.h),
                         child: Text(
-                          'Tap seats on the map or search to add areas.',
+                          'Tap seats or cabin locations on the map to add areas.',
                           style: GoogleFonts.dmSans(
                             fontSize: 12.sp,
                             color: _C.grey,
@@ -1794,7 +1688,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                               ),
                               SizedBox(height: 4.h),
                               Text(
-                                'Review the areas you selected for inspection. Tap seats on the map or use search to add more areas.',
+                                'Review the areas you selected for inspection. Tap seats or cabin locations on the map to add more areas.',
                                 style: GoogleFonts.dmSans(
                                   fontSize: 12.sp,
                                   color: Colors.orange.shade800,
@@ -3009,34 +2903,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // ─────────────────────────────────────────────
   // AREA SEARCH FIELD
   // ─────────────────────────────────────────────
-  Widget _buildAreaSearchField() {
-    return TextField(
-      controller: _ctrl.areaSearchCtrl,
-      style: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.dark),
-      onTap: () => _ctrl.showAreaDropdown.value = true,
-      decoration: InputDecoration(
-        hintText: 'Search area (e.g. Front Galley, MID LAV...)',
-        hintStyle: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.grey),
-        prefixIcon: Icon(Icons.search_rounded, size: 18.sp, color: _C.grey),
-        filled: true,
-        fillColor: _C.inputBg,
-        contentPadding: EdgeInsets.symmetric(vertical: 13.h, horizontal: 16.w),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.r),
-          borderSide: BorderSide(color: _C.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.r),
-          borderSide: BorderSide(color: _C.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.r),
-          borderSide: BorderSide(color: _C.primary, width: 1.5),
-        ),
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────
   // DYNAMIC AREA CARD — delegates to StatefulWidget
   // ─────────────────────────────────────────────
@@ -3199,10 +3065,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.cloud_upload_outlined, size: 20.sp, color: _C.grey),
+          Icon(Icons.camera_alt_outlined, size: 20.sp, color: _C.grey),
           SizedBox(width: 8.w),
           Text(
-            'Upload Images',
+            'Capture image',
             style: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
           ),
           SizedBox(width: 6.w),
@@ -3263,9 +3129,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         content: Text(
           '1. Read the instructions and reference image carefully.\n'
           '2. Fill in Gate and Ship # in Section 1.\n'
-          '3. Search or tap seats on the map to select areas.\n'
+          '3. Tap seats on the map to select areas.\n'
           '4. Select aircraft type and review the seat map.\n'
-          '5. Upload a reference photo for each selected area.\n'
+          '5. Capture a reference photo for each selected area.\n'
           '6. Add findings, notes, and sign in Section 3 before submitting.',
           style: GoogleFonts.dmSans(
             fontSize: 13.sp,
@@ -3448,7 +3314,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                     ),
                     SizedBox(width: 8.w),
                     Text(
-                      'Upload reference photo *',
+                      'Capture reference photo *',
                       style: GoogleFonts.dmSans(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w600,
@@ -3476,15 +3342,15 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.cloud_upload_outlined,
+                          Icons.camera_alt_outlined,
                           size: 18.sp,
                           color: imageUploaded ? _C.green : _C.grey,
                         ),
                         SizedBox(width: 8.w),
                         Text(
                           imageUploaded
-                              ? 'Add more photos'
-                              : 'Upload reference photo (max 100MB)',
+                              ? 'Capture more photos'
+                              : 'Capture reference photo (max 100MB)',
                           style: GoogleFonts.dmSans(
                             fontSize: 13.sp,
                             color: imageUploaded ? _C.green : _C.grey,
@@ -3579,10 +3445,12 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                     child: Text(
                       imageUploaded
                           ? 'Reference photo uploaded. This area is complete.'
-                          : 'Upload a reference photo above to complete this area.',
+                          : 'Capture a reference photo above to complete this area.',
                       style: GoogleFonts.dmSans(
                         fontSize: 11.sp,
-                        color: imageUploaded ? _C.green : const Color(0xFF7A5800),
+                        color: imageUploaded
+                            ? _C.green
+                            : const Color(0xFF7A5800),
                         height: 1.4,
                       ),
                     ),

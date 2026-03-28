@@ -68,6 +68,7 @@ class AuditCheckItems {
       'Seat Recline',
       'IFE Screen',
       'Tray Table',
+      'Life vest seal',
       'Headrest / Pillow',
       'Blanket',
       'Seat Pocket',
@@ -78,6 +79,7 @@ class AuditCheckItems {
       'Seat',
       'Tray Table',
       'IFE Screen',
+      'Life vest seal',
       'Overhead Bin',
       'Seat Pocket',
       'Floor / Carpet',
@@ -86,6 +88,7 @@ class AuditCheckItems {
       'Seat Back Trash',
       'Tray Table',
       'IFE Screen',
+      'Life vest seal',
       'Floor / Carpet',
       'Overhead Bin',
       'Seat Pocket',
@@ -2547,6 +2550,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       case 'ifescreens':
         return normalizedItem.contains('ifescreen') ||
             normalizedItem.contains('ifeunit');
+      case 'lifevestseal':
+        return normalizedItem == 'lifevestseal' ||
+            normalizedItem == 'lifevestpouch';
       default:
         return false;
     }
