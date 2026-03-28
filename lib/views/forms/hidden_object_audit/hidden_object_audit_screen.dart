@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:avislap/data/seat_map_config.dart' as seat_map_config;
+import 'package:avislap/models/pending_upload_file.dart';
 import 'package:avislap/services/api_exception.dart';
 import 'package:avislap/services/app_api_service.dart';
 import 'package:avislap/services/session_service.dart';
@@ -1448,6 +1449,7 @@ class _LocationActionSheet extends StatefulWidget {
 class _LocationActionSheetState extends State<_LocationActionSheet> {
   late String _selectedSubLocation;
   late List<String> _photoFileIds;
+  PendingUploadFile? _pendingPhotoUpload;
   bool _saving = false;
 
   @override
@@ -1471,19 +1473,65 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
         return;
       }
 
-      setState(() => _saving = true);
+      setState(() {
+        _pendingPhotoUpload = PendingUploadFile(localFile: File(picked.path));
+      });
+      await _uploadSelectedPhoto(_pendingPhotoUpload!);
+    } on ApiException catch (error) {
+      Get.snackbar(
+        'Upload Photo',
+        error.message,
+        backgroundColor: _HOColors.red,
+        colorText: Colors.white,
+      );
+    }
+  }
+
+  Future<void> _uploadSelectedPhoto(PendingUploadFile upload) async {
+    setState(() {
+      _saving = true;
+      upload.status = PendingUploadStatus.uploading;
+      upload.progress = 0;
+      upload.errorMessage = null;
+    });
+
+    try {
       final uploaded = await widget.api.uploadFile(
-        File(picked.path),
+        upload.localFile,
         category: 'IMAGE',
+        onSendProgress: (sent, total) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            upload.progress = total <= 0 ? 0 : sent / total;
+          });
+        },
       );
       final fileId = uploaded['id']?.toString().trim() ?? '';
       if (fileId.isEmpty) {
         throw const ApiException('Photo upload did not return a file id.');
       }
+
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
+        upload.fileId = fileId;
+        upload.cloudinaryUrl = uploaded['cloudinaryUrl']?.toString().trim();
+        upload.progress = 1;
+        upload.status = PendingUploadStatus.completed;
         _photoFileIds = <String>[fileId];
       });
     } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = error.message;
+      });
       Get.snackbar(
         'Upload Photo',
         error.message,
@@ -1537,9 +1585,11 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
   @override
   Widget build(BuildContext context) {
     final imageHeaders = widget.api.buildImageHeaders();
-    final photoUrls = _photoFileIds
-        .map(widget.api.buildFileContentUrl)
-        .toList(growable: false);
+    final photoUrls = _pendingPhotoUpload != null
+        ? <String>[]
+        : _photoFileIds
+              .map(widget.api.buildFileContentUrl)
+              .toList(growable: false);
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -1641,7 +1691,54 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                 ),
               ],
             ),
-            if (photoUrls.isNotEmpty) ...[
+            if (_pendingPhotoUpload != null) ...[
+              SizedBox(height: 12.h),
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12.r),
+                    child: Image.file(
+                      _pendingPhotoUpload!.localFile,
+                      width: 90.w,
+                      height: 90.h,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  if (_pendingPhotoUpload!.isUploading ||
+                      _pendingPhotoUpload!.hasError)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: Center(
+                          child: _pendingPhotoUpload!.isUploading
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : IconButton(
+                                  onPressed: () => _uploadSelectedPhoto(
+                                    _pendingPhotoUpload!,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.refresh_rounded,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ] else if (photoUrls.isNotEmpty) ...[
               SizedBox(height: 12.h),
               SizedBox(
                 height: 90.h,

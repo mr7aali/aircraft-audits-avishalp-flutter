@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:avislap/healper/route.dart';
+import 'package:avislap/models/pending_upload_file.dart';
 import 'package:avislap/services/api_exception.dart';
 import 'package:avislap/services/app_api_service.dart';
 import 'package:avislap/services/session_service.dart';
@@ -34,6 +35,7 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _isEditing = false;
   Map<String, dynamic> _profile = const <String, dynamic>{};
   File? _draftProfileImage;
+  PendingUploadFile? _draftProfileUpload;
   bool _removeProfileImage = false;
 
   void _handleDraftChanged() {
@@ -183,10 +185,13 @@ class _ProfileTabState extends State<ProfileTab> {
         return;
       }
 
+      final upload = PendingUploadFile(localFile: File(picked.path));
       setState(() {
-        _draftProfileImage = File(picked.path);
+        _draftProfileImage = upload.localFile;
+        _draftProfileUpload = upload;
         _removeProfileImage = false;
       });
+      await _uploadDraftProfileImage(upload);
     } catch (_) {
       Get.snackbar(
         'Photo Not Selected',
@@ -201,8 +206,80 @@ class _ProfileTabState extends State<ProfileTab> {
   void _removeProfilePhoto() {
     setState(() {
       _draftProfileImage = null;
+      _draftProfileUpload = null;
       _removeProfileImage = true;
     });
+  }
+
+  Future<void> _uploadDraftProfileImage(PendingUploadFile upload) async {
+    setState(() {
+      upload.status = PendingUploadStatus.uploading;
+      upload.progress = 0;
+      upload.errorMessage = null;
+    });
+
+    try {
+      final uploaded = await _api.uploadFile(
+        upload.localFile,
+        category: 'IMAGE',
+        onSendProgress: (sent, total) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            upload.progress = total <= 0 ? 0 : sent / total;
+          });
+        },
+      );
+      final fileId = uploaded['id']?.toString().trim() ?? '';
+      if (fileId.isEmpty) {
+        throw const ApiException(
+          'Unable to upload the selected profile photo.',
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        upload.fileId = fileId;
+        upload.cloudinaryUrl = uploaded['cloudinaryUrl']?.toString().trim();
+        upload.progress = 1;
+        upload.status = PendingUploadStatus.completed;
+        upload.errorMessage = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = error.message;
+      });
+      Get.snackbar(
+        'Photo Upload Failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = 'Unable to upload the selected profile photo.';
+      });
+      Get.snackbar(
+        'Photo Upload Failed',
+        'Unable to upload the selected profile photo.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
   }
 
   void _startEditing() {
@@ -248,11 +325,12 @@ class _ProfileTabState extends State<ProfileTab> {
       };
 
       if (_draftProfileImage != null) {
-        final uploaded = await _api.uploadFile(
-          _draftProfileImage!,
-          category: 'IMAGE',
-        );
-        final fileId = uploaded['id']?.toString().trim() ?? '';
+        if (_draftProfileUpload?.isUploading == true) {
+          throw const ApiException(
+            'Please wait for the profile photo upload to finish.',
+          );
+        }
+        final fileId = _draftProfileUpload?.fileId?.trim() ?? '';
         if (fileId.isEmpty) {
           throw const ApiException(
             'Unable to upload the selected profile photo.',
@@ -358,6 +436,7 @@ class _ProfileTabState extends State<ProfileTab> {
     _emailCtrl.text = (_profile['email'] as String?)?.trim() ?? '';
     _phoneCtrl.text = (_profile['phone'] as String?)?.trim() ?? '';
     _draftProfileImage = null;
+    _draftProfileUpload = null;
     _removeProfileImage = false;
 
     if (persistToSession) {
@@ -405,6 +484,13 @@ class _ProfileTabState extends State<ProfileTab> {
       _profileImageFileId!.isNotEmpty;
 
   bool get _hasAvatarImage => _draftProfileImage != null || _hasServerImage;
+  bool get _isDraftPhotoUploading => _draftProfileUpload?.isUploading == true;
+  bool get _hasDraftPhotoUploadError => _draftProfileUpload?.hasError == true;
+  bool get _canSaveProfile =>
+      _hasPendingChanges &&
+      !_isSaving &&
+      !_isDraftPhotoUploading &&
+      !_hasDraftPhotoUploadError;
 
   bool get _hasPendingChanges {
     final currentFirstName = _firstNameCtrl.text.trim();
@@ -659,7 +745,11 @@ class _ProfileTabState extends State<ProfileTab> {
                 Expanded(
                   child: Text(
                     _draftProfileImage != null
-                        ? 'New photo selected. Save changes to update it.'
+                        ? _isDraftPhotoUploading
+                              ? 'Uploading your new profile photo...'
+                              : _hasDraftPhotoUploadError
+                              ? 'Profile photo upload failed. Retry or remove it before saving.'
+                              : 'Profile photo uploaded. Save changes to apply it.'
                         : !_isEditing
                         ? 'Tap edit profile to update your details.'
                         : _emailCtrl.text.trim().isNotEmpty
@@ -672,6 +762,18 @@ class _ProfileTabState extends State<ProfileTab> {
                     ),
                   ),
                 ),
+                if (_hasDraftPhotoUploadError && _draftProfileUpload != null)
+                  TextButton(
+                    onPressed: () =>
+                        _uploadDraftProfileImage(_draftProfileUpload!),
+                    child: const Text('Retry'),
+                  )
+                else if (_isDraftPhotoUploading)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
               ],
             ),
           ),
@@ -796,9 +898,7 @@ class _ProfileTabState extends State<ProfileTab> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _hasPendingChanges && !_isSaving
-                        ? _saveProfile
-                        : null,
+                    onPressed: _canSaveProfile ? _saveProfile : null,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.mainAppColor,
                       disabledBackgroundColor: const Color(0xFFD7E0F3),

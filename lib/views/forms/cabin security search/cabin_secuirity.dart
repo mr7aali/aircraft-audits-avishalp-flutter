@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 // ignore_for_file: unintended_html_in_doc_comment
+import 'package:avislap/models/pending_upload_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -167,21 +169,23 @@ class SubItemStatus {
 class AreaCard {
   final String areaName;
   String status; // overall: 'pass' | 'fail' | ''
-  List<File> images; // hide-phase images (uploaded before hiding)
+  List<PendingUploadFile> images; // reference photos uploaded immediately
   List<File> auditImages; // audit-phase images (uploaded when marking)
   List<SubItemStatus> subItems;
-  bool imageUploaded; // true once >= 1 hide-phase image uploaded
 
   AreaCard({required this.areaName})
     : status = '',
       images = [],
       auditImages = [],
-      imageUploaded = false,
       subItems = CabinSecurityCheckItems.forArea(
         areaName,
       ).map((n) => SubItemStatus(itemName: n)).toList();
 
   /// Uploading the reference photo completes the area.
+  bool get imageUploaded => images.any((upload) => upload.isCompleted);
+  bool get hasUploadingImages => images.any((upload) => upload.isUploading);
+  bool get hasUploadErrors => images.any((upload) => upload.hasError);
+
   String get computedStatus => imageUploaded ? 'pass' : '';
 
   double get scorePercent {
@@ -508,12 +512,11 @@ class CabinQualityController extends GetxController {
     }
   }
 
-  void addAreaImage(String area, File file) {
+  void addAreaImage(String area, PendingUploadFile file) {
     final card = areaCards.firstWhereOrNull((c) => c.areaName == area);
     if (card != null) {
       card.images.add(file);
-      card.imageUploaded = true;
-      imageUploadedMap[area] = true; // reactive update
+      imageUploadedMap[area] = card.imageUploaded;
       areaCards.refresh();
     }
   }
@@ -522,10 +525,15 @@ class CabinQualityController extends GetxController {
     final card = areaCards.firstWhereOrNull((c) => c.areaName == area);
     if (card != null) {
       card.images.removeAt(index);
-      if (card.images.isEmpty) {
-        card.imageUploaded = false;
-        imageUploadedMap[area] = false;
-      }
+      imageUploadedMap[area] = card.imageUploaded;
+      areaCards.refresh();
+    }
+  }
+
+  void refreshAreaImageState(String area) {
+    final card = areaCards.firstWhereOrNull((c) => c.areaName == area);
+    if (card != null) {
+      imageUploadedMap[area] = card.imageUploaded;
       areaCards.refresh();
     }
   }
@@ -670,7 +678,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   //        2 = Section 3 (Finalize)
   int _step = 0;
 
-  final RxList<File> _generalImages = <File>[].obs;
+  final RxList<PendingUploadFile> _generalImages = <PendingUploadFile>[].obs;
   final ImagePicker _picker = ImagePicker();
   final Map<String, String> _gateIdsByLabel = <String, String>{};
   final Map<String, String> _areaIdsByLabel = <String, String>{};
@@ -687,9 +695,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   }
 
   // ── 100MB image validation ────────────────────────────
-  Future<List<File>> _pickValidatedImages() async {
+  Future<List<PendingUploadFile>> _pickValidatedImages() async {
     final picked = await _picker.pickImage(source: ImageSource.camera);
-    final List<File> valid = [];
+    final List<PendingUploadFile> valid = [];
     final List<String> oversized = [];
 
     if (picked != null) {
@@ -698,7 +706,8 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       if (size > kMaxImageBytes) {
         oversized.add(picked.name);
       } else {
-        valid.add(file);
+        final upload = PendingUploadFile(localFile: file);
+        valid.add(upload);
       }
     }
 
@@ -1180,6 +1189,8 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                           card: card,
                           ctrl: _ctrl,
                           pickImages: _pickValidatedImages,
+                          retryAreaUpload: (upload, area) =>
+                              _uploadPendingImage(upload, areaName: area),
                           trailingIcon: Icons.close_rounded,
                           onTrailingTap: () => Navigator.of(sheetContext).pop(),
                         ),
@@ -1930,12 +1941,50 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(8.r),
                                     child: Image.file(
-                                      e.value,
+                                      e.value.localFile,
                                       width: 80.w,
                                       height: 80.w,
                                       fit: BoxFit.cover,
                                     ),
                                   ),
+                                  if (e.value.isUploading || e.value.hasError)
+                                    Positioned.fill(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.45,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8.r,
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: e.value.isUploading
+                                              ? const SizedBox(
+                                                  width: 22,
+                                                  height: 22,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor:
+                                                        AlwaysStoppedAnimation<
+                                                          Color
+                                                        >(Colors.white),
+                                                  ),
+                                                )
+                                              : IconButton(
+                                                  onPressed: () => unawaited(
+                                                    _uploadPendingImage(
+                                                      e.value,
+                                                    ),
+                                                  ),
+                                                  icon: const Icon(
+                                                    Icons.refresh_rounded,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ),
                                   Positioned(
                                     top: 4,
                                     right: 4,
@@ -2008,18 +2057,97 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // ─────────────────────────────────────────────
   // SUBMIT BUTTON — success popup then navigate
   // ─────────────────────────────────────────────
-  Future<List<String>> _uploadImageFiles(List<File> files) async {
-    final uploadedIds = <String>[];
+  Future<void> _uploadPendingImage(
+    PendingUploadFile upload, {
+    String? areaName,
+  }) async {
+    setState(() {
+      upload.status = PendingUploadStatus.uploading;
+      upload.progress = 0;
+      upload.errorMessage = null;
+    });
 
-    for (final file in files) {
-      final uploaded = await _api.uploadFile(file, category: 'IMAGE');
-      final fileId = uploaded['id']?.toString() ?? '';
-      if (fileId.isNotEmpty) {
+    try {
+      final uploaded = await _api.uploadFile(
+        upload.localFile,
+        category: 'IMAGE',
+        onSendProgress: (sent, total) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            upload.progress = total <= 0 ? 0 : sent / total;
+          });
+        },
+      );
+      final fileId = uploaded['id']?.toString().trim() ?? '';
+      if (fileId.isEmpty) {
+        throw const ApiException('Image upload did not return a file id.');
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        upload.fileId = fileId;
+        upload.cloudinaryUrl = uploaded['cloudinaryUrl']?.toString().trim();
+        upload.progress = 1;
+        upload.status = PendingUploadStatus.completed;
+        upload.errorMessage = null;
+      });
+      if (areaName != null) {
+        _ctrl.refreshAreaImageState(areaName);
+      }
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = error.message;
+      });
+      if (areaName != null) {
+        _ctrl.refreshAreaImageState(areaName);
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = 'Unable to upload this image right now.';
+      });
+      if (areaName != null) {
+        _ctrl.refreshAreaImageState(areaName);
+      }
+    }
+  }
+
+  List<String> _uploadedFileIds(Iterable<PendingUploadFile> uploads) {
+    final uploadedIds = <String>[];
+    for (final upload in uploads) {
+      final fileId = upload.fileId?.trim() ?? '';
+      if (upload.isCompleted && fileId.isNotEmpty) {
         uploadedIds.add(fileId);
       }
     }
-
     return uploadedIds;
+  }
+
+  String? _imageUploadBlockerMessage() {
+    final uploads = <PendingUploadFile>[
+      ..._generalImages,
+      ..._ctrl.areaCards.expand((card) => card.images),
+    ];
+
+    if (uploads.any((upload) => upload.isUploading)) {
+      return 'Please wait for all selected images to finish uploading.';
+    }
+    if (uploads.any((upload) => upload.hasError)) {
+      return 'Retry or remove failed image uploads before submitting.';
+    }
+    return null;
   }
 
   String? _buildSubmissionNotes() {
@@ -2194,15 +2322,24 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       );
       return;
     }
+    final uploadBlocker = _imageUploadBlockerMessage();
+    if (uploadBlocker != null) {
+      Get.snackbar(
+        'Uploads Pending',
+        uploadBlocker,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
     final isPassed = _ctrl.areaCards.every((c) => c.computedStatus == 'pass');
 
     try {
-      final generalPictureFileIds = await _uploadImageFiles(
-        _generalImages.toList(),
-      );
+      final generalPictureFileIds = _uploadedFileIds(_generalImages);
       final hiddenObjectLocationResults = _buildHiddenObjectLocationResults();
 
       if (_linkedHiddenObjectAuditId != null &&
@@ -2215,7 +2352,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       final areaResults = <Map<String, dynamic>>[];
       final detailedAreaResults = <Map<String, dynamic>>[];
       for (final card in _ctrl.areaCards) {
-        final imageFileIds = await _uploadImageFiles(card.images);
+        final imageFileIds = _uploadedFileIds(card.images);
 
         final areaPayload = <String, dynamic>{
           'result': card.imageUploaded ? 'PASS' : 'FAIL',
@@ -2912,6 +3049,8 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       card: card,
       ctrl: _ctrl,
       pickImages: _pickValidatedImages,
+      retryAreaUpload: (upload, areaName) =>
+          _uploadPendingImage(upload, areaName: areaName),
     );
   }
 
@@ -3054,6 +3193,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     onTap: () async {
       final files = await _pickValidatedImages();
       _generalImages.addAll(files);
+      for (final upload in files) {
+        unawaited(_uploadPendingImage(upload));
+      }
     },
     child: Container(
       height: 52.h,
@@ -3162,7 +3304,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 class _AreaCardWidget extends StatefulWidget {
   final AreaCard card;
   final CabinQualityController ctrl;
-  final Future<List<File>> Function() pickImages;
+  final Future<List<PendingUploadFile>> Function() pickImages;
+  final Future<void> Function(PendingUploadFile upload, String areaName)
+  retryAreaUpload;
   final VoidCallback? onTrailingTap;
   final IconData trailingIcon;
 
@@ -3171,6 +3315,7 @@ class _AreaCardWidget extends StatefulWidget {
     required this.card,
     required this.ctrl,
     required this.pickImages,
+    required this.retryAreaUpload,
     this.onTrailingTap,
     this.trailingIcon = Icons.close_rounded,
   }) : super(key: key);
@@ -3185,10 +3330,17 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
 
   // ── Phase 1: upload hiding photo ──────────────
   Future<void> _pickHideImages() async {
-    final files = await widget.pickImages();
-    if (files.isEmpty) return;
-    for (final f in files) {
-      ctrl.addAreaImage(card.areaName, f);
+    final uploads = await widget.pickImages();
+    if (uploads.isEmpty) return;
+    for (final upload in uploads) {
+      ctrl.addAreaImage(card.areaName, upload);
+      unawaited(
+        widget.retryAreaUpload(upload, card.areaName).whenComplete(() {
+          if (mounted) {
+            setState(() {});
+          }
+        }),
+      );
     }
     setState(() {});
   }
@@ -3213,6 +3365,8 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
   @override
   Widget build(BuildContext context) {
     final imageUploaded = card.imageUploaded;
+    final hasUploadingImages = card.hasUploadingImages;
+    final hasUploadErrors = card.hasUploadErrors;
     final overallStatus = card.computedStatus;
 
     final borderColor = overallStatus == 'pass'
@@ -3268,10 +3422,18 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                       Text(
                         imageUploaded
                             ? 'Reference photo uploaded'
+                            : hasUploadingImages
+                            ? 'Uploading reference photo...'
+                            : hasUploadErrors
+                            ? 'Reference photo upload failed'
                             : 'Reference photo required',
                         style: GoogleFonts.dmSans(
                           fontSize: 11.sp,
-                          color: imageUploaded ? _C.green : _C.grey,
+                          color: imageUploaded
+                              ? _C.green
+                              : hasUploadErrors
+                              ? _C.red
+                              : _C.grey,
                         ),
                       ),
                     ],
@@ -3380,11 +3542,57 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8.r),
                               child: Image.file(
-                                card.images[i],
+                                card.images[i].localFile,
                                 fit: BoxFit.cover,
                               ),
                             ),
                           ),
+                          if (card.images[i].isUploading ||
+                              card.images[i].hasError)
+                            Positioned.fill(
+                              child: Container(
+                                width: 64.w,
+                                height: 64.h,
+                                margin: EdgeInsets.only(right: 8.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.45),
+                                  borderRadius: BorderRadius.circular(8.r),
+                                ),
+                                child: Center(
+                                  child: card.images[i].isUploading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  Colors.white,
+                                                ),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          onPressed: () => unawaited(
+                                            widget
+                                                .retryAreaUpload(
+                                                  card.images[i],
+                                                  card.areaName,
+                                                )
+                                                .whenComplete(() {
+                                                  if (mounted) {
+                                                    setState(() {});
+                                                  }
+                                                }),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.refresh_rounded,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
                           Positioned(
                             top: 2,
                             right: 10,
@@ -3445,11 +3653,17 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                     child: Text(
                       imageUploaded
                           ? 'Reference photo uploaded. This area is complete.'
+                          : hasUploadingImages
+                          ? 'Reference photo is uploading. Submission will unlock as soon as it finishes.'
+                          : hasUploadErrors
+                          ? 'Reference photo upload failed. Retry or remove the failed image above.'
                           : 'Capture a reference photo above to complete this area.',
                       style: GoogleFonts.dmSans(
                         fontSize: 11.sp,
                         color: imageUploaded
                             ? _C.green
+                            : hasUploadErrors
+                            ? _C.red
                             : const Color(0xFF7A5800),
                         height: 1.4,
                       ),
