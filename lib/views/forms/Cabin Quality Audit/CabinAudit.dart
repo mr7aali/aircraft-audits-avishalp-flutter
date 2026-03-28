@@ -54,6 +54,7 @@ class AuditCheckItems {
       'Coffee Maker',
       'Storage Compartments',
       'Floor',
+      'Tray Tables',
     ],
     'jump_seat': [
       'Seat Cushion',
@@ -491,10 +492,33 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     exportBackgroundColor: Colors.white,
   );
 
-  Future<void> _pickImages() async {
-    final List<XFile> images = await _picker.pickMultiImage();
-    if (images.isNotEmpty) {
-      _selectedImages.addAll(images.map((img) => File(img.path)));
+  Future<File?> _captureImage({ImagePicker? picker}) async {
+    try {
+      final picked = await (picker ?? _picker).pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+        maxWidth: 1800,
+      );
+      if (picked == null) {
+        return null;
+      }
+      return File(picked.path);
+    } catch (_) {
+      Get.snackbar(
+        'Camera Unavailable',
+        'Unable to capture an image right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _captureGeneralImage() async {
+    final image = await _captureImage();
+    if (image != null) {
+      _selectedImages.add(image);
     }
   }
 
@@ -813,7 +837,13 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                           spacing: 8.w,
                           runSpacing: 6.h,
                           children: _ctrl.mandatoryAreas.map((m) {
-                            bool isDone = _ctrl.auditedSeats.containsKey(m);
+                            final status = _ctrl.auditedSeats[m];
+                            final isDone = status != null;
+                            final statusColor = status == 'fail'
+                                ? _C.red
+                                : status == 'pass'
+                                ? _C.green
+                                : _C.dark;
                             return Text(
                               m,
                               style: GoogleFonts.dmSans(
@@ -821,10 +851,11 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                                 fontWeight: isDone
                                     ? FontWeight.normal
                                     : FontWeight.w600,
-                                color: isDone ? _C.green : _C.dark,
+                                color: statusColor,
                                 decoration: isDone
                                     ? TextDecoration.lineThrough
                                     : null,
+                                decorationColor: statusColor,
                               ),
                             );
                           }).toList(),
@@ -1494,10 +1525,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     final RxList<String> tags = <String>[].obs;
     final picker = ImagePicker();
 
-    Future<void> pickImages() async {
-      final picked = await picker.pickMultiImage();
-      if (picked.isNotEmpty) {
-        seatImages.addAll(picked.map((x) => File(x.path)));
+    Future<void> captureAreaImage() async {
+      final image = await _captureImage(picker: picker);
+      if (image != null) {
+        seatImages.add(image);
       }
     }
 
@@ -1706,8 +1737,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                         SizedBox(height: 20.h),
 
                         // Upload Images (area-level)
-                        _sheetLabel('Upload Images (optional)'),
-                        _uploadRow(onTap: pickImages),
+                        _sheetLabel('Capture Image (optional)'),
+                        _uploadRow(onTap: captureAreaImage),
                         SizedBox(height: 10.h),
                         _thumbsRow(seatImages),
                         SizedBox(height: 16.h),
@@ -1864,12 +1895,12 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           // ── Image upload + hashtag per check item ──
           if (hasDetails) ...[
             SizedBox(height: 12.h),
-            _sheetLabel('Upload image for "$itemName":'),
+            _sheetLabel('Capture image for "$itemName":'),
             _uploadRow(
               onTap: () async {
-                final picked = await picker.pickMultiImage();
-                if (picked.isNotEmpty) {
-                  imagesList.addAll(picked.map((x) => File(x.path)));
+                final image = await _captureImage(picker: picker);
+                if (image != null) {
+                  imagesList.add(image);
                 }
               },
             ),
@@ -2099,7 +2130,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
             Icon(Icons.cloud_upload_outlined, size: 20.sp, color: _C.grey),
             SizedBox(width: 8.w),
             Text(
-              'Upload an image',
+              'Capture image',
               style: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
             ),
           ],
@@ -2403,7 +2434,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       );
 
   Widget _uploadBox() => GestureDetector(
-    onTap: _pickImages,
+    onTap: _captureGeneralImage,
     child: Container(
       height: 52.h,
       decoration: BoxDecoration(
@@ -2414,10 +2445,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.cloud_upload_outlined, size: 20.sp, color: _C.grey),
+          Icon(Icons.photo_camera_outlined, size: 20.sp, color: _C.grey),
           SizedBox(width: 8.w),
           Text(
-            'Upload images',
+            'Capture image',
             style: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
           ),
         ],

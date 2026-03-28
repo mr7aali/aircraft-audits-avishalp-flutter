@@ -1658,15 +1658,43 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
             ),
           ] else if (widget.auditStatus == 'ACTIVE' &&
               widget.location.status == 'BLUE') ...[
-            Text(
-              widget.location.subLocation.isEmpty
-                  ? 'Agents are searching this location from Cabin Security Search Training.'
-                  : 'Agents are searching ${widget.location.subLocation} from Cabin Security Search Training.',
-              style: GoogleFonts.dmSans(
-                fontSize: 13.sp,
-                color: _HOColors.textMuted,
+            if (widget.location.subLocation.isEmpty)
+              Text(
+                'Agents are searching this location from Cabin Security Search Training.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13.sp,
+                  color: _HOColors.textMuted,
+                ),
+              )
+            else
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Agents are searching ',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13.sp,
+                        color: _HOColors.textMuted,
+                      ),
+                    ),
+                    TextSpan(
+                      text: widget.location.subLocation.replaceAll(' ', '\u00A0'),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: _HOColors.primary,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' from Cabin Security Search Training.',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13.sp,
+                        color: _HOColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ] else ...[
             Text(
               widget.location.subLocation.isEmpty
