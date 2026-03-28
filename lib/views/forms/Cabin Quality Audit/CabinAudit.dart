@@ -475,6 +475,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
   final _supervisorCtrl = TextEditingController();
+  final _shipNumberCtrl = TextEditingController();
+  final _flightNumberCtrl = TextEditingController();
   final _otherFindingsCtrl = TextEditingController();
   final _additionalNotesCtrl = TextEditingController();
 
@@ -540,6 +542,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   @override
   void dispose() {
     _supervisorCtrl.dispose();
+    _shipNumberCtrl.dispose();
+    _flightNumberCtrl.dispose();
     _otherFindingsCtrl.dispose();
     _additionalNotesCtrl.dispose();
     signatureController.dispose();
@@ -726,6 +730,18 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                 _label('Supervisor / Lead *'),
                 _pillTextField(controller: _supervisorCtrl, hint: 'John Doe'),
                 SizedBox(height: 16.h),
+                _label('Ship *'),
+                _pillTextField(
+                  controller: _shipNumberCtrl,
+                  hint: 'Enter ship number',
+                ),
+                SizedBox(height: 16.h),
+                _label('Flight Number *'),
+                _pillTextField(
+                  controller: _flightNumberCtrl,
+                  hint: 'Enter flight number',
+                ),
+                SizedBox(height: 16.h),
                 _label('Gate *'),
                 Obx(
                   () => _pillDropdown(
@@ -748,6 +764,26 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           ),
         ),
         _nextButton(() {
+          if (_shipNumberCtrl.text.trim().isEmpty) {
+            Get.snackbar(
+              'Incomplete',
+              'Please enter the ship number before continuing.',
+              snackPosition: SnackPosition.TOP,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+            );
+            return;
+          }
+          if (_flightNumberCtrl.text.trim().isEmpty) {
+            Get.snackbar(
+              'Incomplete',
+              'Please enter the flight number before continuing.',
+              snackPosition: SnackPosition.TOP,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+            );
+            return;
+          }
           if (_ctrl.mandatoryAreas.isEmpty) {
             _ctrl.generateMandatoryAreas();
           }
@@ -2674,6 +2710,18 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       return;
     }
 
+    if (_shipNumberCtrl.text.trim().isEmpty ||
+        _flightNumberCtrl.text.trim().isEmpty) {
+      Get.snackbar(
+        'Incomplete',
+        'Please go back and complete the ship and flight number before submitting.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
     final gateId = _gateIdsByLabel[_ctrl.selectedGate.value];
     final cleanTypeId = _cleanTypeIdsByLabel[_ctrl.selectedCleanType.value];
     if (gateId == null || gateId.isEmpty) {
@@ -2711,6 +2759,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       await _api.createCabinQualityAudit({
         'gateId': gateId,
         'cleanTypeId': cleanTypeId,
+        'shipNumber': _shipNumberCtrl.text.trim(),
+        'flightNumber': _flightNumberCtrl.text.trim(),
         'responses': responses,
         'areaResults': areaResults,
         'signatureFileId': signatureFileId,
