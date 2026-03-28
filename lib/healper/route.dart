@@ -1,5 +1,6 @@
 import 'package:avislap/views/auth/splash_screen.dart';
 import 'package:avislap/views/auth/login_screen.dart';
+import 'package:avislap/services/session_service.dart';
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
 import 'package:get/get.dart';
@@ -52,7 +53,13 @@ class RouteHelper {
     ),
     GetPage(
       name: hiddenObjectAudit,
-      page: () => const HiddenObjectAuditListScreen(),
+      page: () {
+        final session = Get.find<SessionService>();
+        if (session.isEmployeeRole) {
+          return const DashboardScreen();
+        }
+        return const HiddenObjectAuditListScreen();
+      },
       transition: Transition.rightToLeft,
     ),
   ];

@@ -2,6 +2,7 @@ import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditLis
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/CabinSecurityTrainingScreen.dart';
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
+import 'package:avislap/services/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -33,43 +34,66 @@ class DrawerMenuItem {
 class AppDrawerController extends GetxController {
   final RxString expandedItem = ''.obs;
   final RxString activeItem = 'Dashboard'.obs;
+  final SessionService _session = Get.find<SessionService>();
 
-  final List<DrawerMenuItem> menuItems = const [
-    DrawerMenuItem(title: 'Dashboard', icon: Icons.pie_chart_outline_rounded),
-    DrawerMenuItem(
-      title: 'My Employees',
+  List<DrawerMenuItem> get menuItems {
+    final formSubItems = <DrawerSubItem>[
+      const DrawerSubItem(title: 'Cabin Quality Audit'),
+      const DrawerSubItem(title: 'Cabin Security Search Training'),
+      if (!_session.isEmployeeRole)
+        const DrawerSubItem(title: 'Hidden Object Audit'),
+      const DrawerSubItem(title: 'LAV Safety Observation'),
+    ];
 
-      icon: Icons.people_outline_rounded,
-      subItems: [
-        DrawerSubItem(
-          title: 'Employee Detail',
-          icon: Icons.person_outline_rounded,
-        ),
-        DrawerSubItem(title: 'Directory', icon: Icons.phone_outlined),
-      ],
-    ),
-    DrawerMenuItem(
-      title: 'Forms',
-      icon: Icons.insert_drive_file_outlined,
-      subItems: [
-        DrawerSubItem(title: 'Cabin Quality Audit'),
-        DrawerSubItem(title: 'Cabin Security Search Training'),
-        DrawerSubItem(title: 'Hidden Object Audit'),
-        DrawerSubItem(title: 'LAV Safety Observation'),
-      ],
-    ),
-    DrawerMenuItem(title: 'Inventory', icon: Icons.grid_view_outlined),
-    DrawerMenuItem(title: 'Chat', icon: Icons.chat_bubble_outline_rounded),
-    DrawerMenuItem(
-      title: 'Time and Edits',
-      icon: Icons.access_time_rounded,
-      subItems: [
-        DrawerSubItem(title: 'Time Sheet', icon: Icons.calendar_today_outlined),
-        DrawerSubItem(title: 'Edit Requests', icon: Icons.edit_outlined),
-      ],
-    ),
-    DrawerMenuItem(title: 'Feedback', icon: Icons.people_alt_outlined),
-  ];
+    return const [
+          DrawerMenuItem(
+            title: 'Dashboard',
+            icon: Icons.pie_chart_outline_rounded,
+          ),
+          DrawerMenuItem(
+            title: 'My Employees',
+            icon: Icons.people_outline_rounded,
+            subItems: [
+              DrawerSubItem(
+                title: 'Employee Detail',
+                icon: Icons.person_outline_rounded,
+              ),
+              DrawerSubItem(title: 'Directory', icon: Icons.phone_outlined),
+            ],
+          ),
+        ]
+        .followedBy([
+          DrawerMenuItem(
+            title: 'Forms',
+            icon: Icons.insert_drive_file_outlined,
+            subItems: formSubItems,
+          ),
+          const DrawerMenuItem(
+            title: 'Inventory',
+            icon: Icons.grid_view_outlined,
+          ),
+          const DrawerMenuItem(
+            title: 'Chat',
+            icon: Icons.chat_bubble_outline_rounded,
+          ),
+          const DrawerMenuItem(
+            title: 'Time and Edits',
+            icon: Icons.access_time_rounded,
+            subItems: [
+              DrawerSubItem(
+                title: 'Time Sheet',
+                icon: Icons.calendar_today_outlined,
+              ),
+              DrawerSubItem(title: 'Edit Requests', icon: Icons.edit_outlined),
+            ],
+          ),
+          const DrawerMenuItem(
+            title: 'Feedback',
+            icon: Icons.people_alt_outlined,
+          ),
+        ])
+        .toList(growable: false);
+  }
 
   void toggleExpand(String title) =>
       expandedItem.value = expandedItem.value == title ? '' : title;

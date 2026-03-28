@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:avislap/data/seat_map_config.dart' as seat_map_config;
 import 'package:avislap/services/api_exception.dart';
 import 'package:avislap/services/app_api_service.dart';
+import 'package:avislap/services/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -286,12 +287,29 @@ class HiddenObjectAuditListScreen extends StatefulWidget {
 class _HiddenObjectAuditListScreenState
     extends State<HiddenObjectAuditListScreen> {
   final AppApiService _api = Get.find<AppApiService>();
+  final SessionService _session = Get.find<SessionService>();
   final List<HiddenObjectAuditListItem> _items = <HiddenObjectAuditListItem>[];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    if (_session.isEmployeeRole) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        Get.offAllNamed('/dashboard');
+        Get.snackbar(
+          'Access Restricted',
+          'Hidden Object Audit is not available for Employee role.',
+          backgroundColor: _HOColors.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+      });
+      return;
+    }
     _load();
   }
 
