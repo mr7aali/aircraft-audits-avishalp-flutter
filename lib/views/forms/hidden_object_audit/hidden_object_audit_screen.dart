@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -1450,7 +1451,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
   late String _selectedSubLocation;
   late List<String> _photoFileIds;
   PendingUploadFile? _pendingPhotoUpload;
-  bool _saving = false;
+  bool _isConfirming = false;
 
   @override
   void initState() {
@@ -1467,16 +1468,20 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
     try {
       final picked = await widget.picker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 80,
+        imageQuality: 85,
+        maxWidth: 1280,
+        maxHeight: 1280,
       );
       if (picked == null) {
         return;
       }
 
+      final pendingUpload = PendingUploadFile(localFile: File(picked.path));
       setState(() {
-        _pendingPhotoUpload = PendingUploadFile(localFile: File(picked.path));
+        _pendingPhotoUpload = pendingUpload;
+        _photoFileIds = <String>[];
       });
-      await _uploadSelectedPhoto(_pendingPhotoUpload!);
+      unawaited(_uploadSelectedPhoto(pendingUpload));
     } on ApiException catch (error) {
       Get.snackbar(
         'Upload Photo',
@@ -1489,7 +1494,6 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
 
   Future<void> _uploadSelectedPhoto(PendingUploadFile upload) async {
     setState(() {
-      _saving = true;
       upload.status = PendingUploadStatus.uploading;
       upload.progress = 0;
       upload.errorMessage = null;
@@ -1499,6 +1503,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
       final uploaded = await widget.api.uploadFile(
         upload.localFile,
         category: 'IMAGE',
+        skipCompression: true,
         onSendProgress: (sent, total) {
           if (!mounted) {
             return;
@@ -1538,25 +1543,41 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
         backgroundColor: _HOColors.red,
         colorText: Colors.white,
       );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
     }
   }
 
   Future<void> _confirmLocation() async {
-    if (_selectedSubLocation.trim().isEmpty || _photoFileIds.isEmpty) {
+    if (_selectedSubLocation.trim().isEmpty) {
       Get.snackbar(
         'Confirm Location',
-        'Choose a sub-location and upload a photo first.',
+        'Choose a sub-location first.',
         backgroundColor: _HOColors.red,
         colorText: Colors.white,
       );
       return;
     }
 
-    setState(() => _saving = true);
+    if (_pendingPhotoUpload?.isUploading == true) {
+      Get.snackbar(
+        'Photo Uploading',
+        'Please wait for the photo upload to finish first.',
+        backgroundColor: _HOColors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    if (_pendingPhotoUpload?.hasError == true || _photoFileIds.isEmpty) {
+      Get.snackbar(
+        'Confirm Location',
+        'Capture a photo and let it finish uploading first.',
+        backgroundColor: _HOColors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    setState(() => _isConfirming = true);
     try {
       final response = await widget.api.confirmHiddenObjectLocation(
         auditId: widget.auditId,
@@ -1577,7 +1598,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
       );
     } finally {
       if (mounted) {
-        setState(() => _saving = false);
+        setState(() => _isConfirming = false);
       }
     }
   }
@@ -1590,6 +1611,9 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
         : _photoFileIds
               .map(widget.api.buildFileContentUrl)
               .toList(growable: false);
+    final isUploadingPhoto = _pendingPhotoUpload?.isUploading == true;
+    final hasUploadError = _pendingPhotoUpload?.hasError == true;
+    final uploadProgress = _pendingPhotoUpload?.progress ?? 0;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -1682,7 +1706,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _saving ? null : _pickAndUploadPhoto,
+                    onPressed: _isConfirming ? null : _pickAndUploadPhoto,
                     icon: const Icon(Icons.camera_alt_outlined),
                     label: Text(
                       _photoFileIds.isEmpty ? 'Capture Photo' : 'Replace Photo',
@@ -1704,8 +1728,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  if (_pendingPhotoUpload!.isUploading ||
-                      _pendingPhotoUpload!.hasError)
+                  if (isUploadingPhoto || hasUploadError)
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
@@ -1713,16 +1736,37 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                           borderRadius: BorderRadius.circular(12.r),
                         ),
                         child: Center(
-                          child: _pendingPhotoUpload!.isUploading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
+                          child: isUploadingPhoto
+                              ? Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        value: uploadProgress > 0 &&
+                                                uploadProgress < 1
+                                            ? uploadProgress
+                                            : null,
+                                        valueColor:
+                                            const AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
                                     ),
-                                  ),
+                                    SizedBox(height: 6.h),
+                                    Text(
+                                      uploadProgress > 0
+                                          ? '${(uploadProgress * 100).round()}%'
+                                          : 'Uploading',
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 10.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 )
                               : IconButton(
                                   onPressed: () => _uploadSelectedPhoto(
@@ -1738,6 +1782,27 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                     ),
                 ],
               ),
+              if (isUploadingPhoto) ...[
+                SizedBox(height: 10.h),
+                Text(
+                  'Uploading hiding photo in the background...',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12.sp,
+                    color: _HOColors.textMuted,
+                  ),
+                ),
+              ] else if (hasUploadError) ...[
+                SizedBox(height: 10.h),
+                Text(
+                  _pendingPhotoUpload?.errorMessage?.trim().isNotEmpty == true
+                      ? _pendingPhotoUpload!.errorMessage!.trim()
+                      : 'Photo upload failed. Tap retry on the image.',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12.sp,
+                    color: _HOColors.red,
+                  ),
+                ),
+              ],
             ] else if (photoUrls.isNotEmpty) ...[
               SizedBox(height: 12.h),
               SizedBox(
@@ -1769,8 +1834,10 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                     borderRadius: BorderRadius.circular(14.r),
                   ),
                 ),
-                onPressed: _saving ? null : _confirmLocation,
-                child: _saving
+                onPressed: _isConfirming || isUploadingPhoto
+                    ? null
+                    : _confirmLocation,
+                child: _isConfirming
                     ? const SizedBox(
                         width: 18,
                         height: 18,

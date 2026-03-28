@@ -277,6 +277,7 @@ class AppApiService {
     File file, {
     required String category,
     ProgressCallback? onSendProgress,
+    bool skipCompression = false,
   }) async {
     CloudinaryUploadResult uploadedAsset;
     try {
@@ -287,6 +288,7 @@ class AppApiService {
         file,
         onProgress: onSendProgress,
         signedPayload: signedPayload,
+        skipCompression: skipCompression,
       );
     } on DioException catch (error) {
       final message = error.response?.data is Map
