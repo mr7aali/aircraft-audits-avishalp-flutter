@@ -1049,6 +1049,11 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       return _linkedHiddenObjectAuditId != null &&
           _hiddenObjectAreaByLocationId.isNotEmpty;
     } on ApiException catch (error) {
+      if (_isPermissionDeniedError(error)) {
+        _clearLinkedHiddenObjectAuditState();
+        return true;
+      }
+
       Get.snackbar(
         'Hidden Object Audit',
         error.message,
@@ -1062,6 +1067,12 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  bool _isPermissionDeniedError(ApiException error) {
+    final message = error.message.trim().toLowerCase();
+    return message.contains('permission denied') ||
+        message.contains('forbidden');
   }
 
   List<Map<String, dynamic>> _buildHiddenObjectLocationResults() {
