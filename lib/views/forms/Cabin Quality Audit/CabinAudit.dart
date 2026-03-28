@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'package:avislap/models/pending_upload_file.dart';
 import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditList.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -357,7 +359,7 @@ class CabinAudit extends GetxController {
   void clearSeat(String id) => auditedSeats.remove(id);
 
   // Per check-item images and tags
-  final checkItemImages = <String, RxList<File>>{};
+  final checkItemImages = <String, RxList<PendingUploadFile>>{};
   final checkItemTags = <String, RxList<String>>{};
 
   // ── FIXED: setCheckItem now auto-fails parent if any sub-item fails ──
@@ -483,7 +485,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   // Steps: 0 = Job Details, 1 = Seat Map, 2 = Notes
   int _step = 0;
 
-  final RxList<File> _selectedImages = <File>[].obs;
+  final RxList<PendingUploadFile> _selectedImages = <PendingUploadFile>[].obs;
   final ImagePicker _picker = ImagePicker();
   final Map<String, String> _gateIdsByLabel = <String, String>{};
   final Map<String, String> _cleanTypeIdsByLabel = <String, String>{};
@@ -523,7 +525,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   Future<void> _captureGeneralImage() async {
     final image = await _captureImage();
     if (image != null) {
-      _selectedImages.add(image);
+      final upload = PendingUploadFile(localFile: image);
+      _selectedImages.add(upload);
+      unawaited(_uploadPendingImage(upload));
     }
   }
 
@@ -1014,23 +1018,59 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                       : Wrap(
                           spacing: 8.w,
                           runSpacing: 8.h,
-                          children: _selectedImages.map((file) {
+                          children: _selectedImages.map((upload) {
                             return Stack(
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8.r),
                                   child: Image.file(
-                                    file,
+                                    upload.localFile,
                                     width: 80.w,
                                     height: 80.w,
                                     fit: BoxFit.cover,
                                   ),
                                 ),
+                                if (upload.isUploading || upload.hasError)
+                                  Positioned.fill(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.45,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          8.r,
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: upload.isUploading
+                                            ? const SizedBox(
+                                                width: 22,
+                                                height: 22,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor:
+                                                      AlwaysStoppedAnimation<
+                                                        Color
+                                                      >(Colors.white),
+                                                ),
+                                              )
+                                            : IconButton(
+                                                onPressed: () => unawaited(
+                                                  _uploadPendingImage(upload),
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.refresh_rounded,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  ),
                                 Positioned(
                                   top: 4,
                                   right: 4,
                                   child: GestureDetector(
-                                    onTap: () => _selectedImages.remove(file),
+                                    onTap: () => _selectedImages.remove(upload),
                                     child: Container(
                                       padding: EdgeInsets.all(2.r),
                                       decoration: const BoxDecoration(
@@ -1559,7 +1599,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       for (final item in checkItems) item: _ctrl.getCheckItem(id, item).obs,
     };
 
-    final RxList<File> seatImages = <File>[].obs;
+    final RxList<PendingUploadFile> seatImages = <PendingUploadFile>[].obs;
     final notesCtrl = TextEditingController();
     final RxList<String> tags = <String>[].obs;
     final picker = ImagePicker();
@@ -1567,7 +1607,12 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     Future<void> captureAreaImage() async {
       final image = await _captureImage(picker: picker);
       if (image != null) {
-        seatImages.add(image);
+        seatImages.add(
+          PendingUploadFile(
+            localFile: image,
+            status: PendingUploadStatus.completed,
+          ),
+        );
       }
     }
 
@@ -1887,7 +1932,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
 
     final imagesList = ctrl.checkItemImages.putIfAbsent(
       key,
-      () => <File>[].obs,
+      () => <PendingUploadFile>[].obs,
     );
     final tagsList = ctrl.checkItemTags.putIfAbsent(key, () => <String>[].obs);
 
@@ -1939,7 +1984,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
               onTap: () async {
                 final image = await _captureImage(picker: picker);
                 if (image != null) {
-                  imagesList.add(image);
+                  final upload = PendingUploadFile(localFile: image);
+                  imagesList.add(upload);
+                  unawaited(_uploadPendingImage(upload));
                 }
               },
             ),
@@ -2179,7 +2226,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   }
 
   // ── Thumbnails horizontal row ────────────────
-  Widget _thumbsRow(RxList<File> imgs) {
+  Widget _thumbsRow(RxList<PendingUploadFile> imgs) {
     return Obx(
       () => imgs.isEmpty
           ? const SizedBox.shrink()
@@ -2200,9 +2247,41 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8.r),
-                        child: Image.file(imgs[i], fit: BoxFit.cover),
+                        child: Image.file(imgs[i].localFile, fit: BoxFit.cover),
                       ),
                     ),
+                    if (imgs[i].isUploading || imgs[i].hasError)
+                      Positioned.fill(
+                        child: Container(
+                          margin: EdgeInsets.only(right: 8.w),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Center(
+                            child: imgs[i].isUploading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : IconButton(
+                                    onPressed: () =>
+                                        unawaited(_uploadPendingImage(imgs[i])),
+                                    icon: const Icon(
+                                      Icons.refresh_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       top: 2,
                       right: 10,
@@ -2495,16 +2574,86 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     ),
   );
 
-  Future<List<String>> _uploadFiles(List<File> files) async {
+  Future<void> _uploadPendingImage(PendingUploadFile upload) async {
+    setState(() {
+      upload.status = PendingUploadStatus.uploading;
+      upload.progress = 0;
+      upload.errorMessage = null;
+    });
+    _refreshUploadCollections(upload);
+
+    try {
+      final uploaded = await _api.uploadFile(
+        upload.localFile,
+        category: 'IMAGE',
+        onSendProgress: (sent, total) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            upload.progress = total <= 0 ? 0 : sent / total;
+          });
+          _refreshUploadCollections(upload);
+        },
+      );
+      final fileId = uploaded['id']?.toString().trim() ?? '';
+      if (fileId.isEmpty) {
+        throw const ApiException('Image upload did not return a file id.');
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        upload.fileId = fileId;
+        upload.cloudinaryUrl = uploaded['cloudinaryUrl']?.toString().trim();
+        upload.progress = 1;
+        upload.status = PendingUploadStatus.completed;
+        upload.errorMessage = null;
+      });
+      _refreshUploadCollections(upload);
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = error.message;
+      });
+      _refreshUploadCollections(upload);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = 'Unable to upload this image right now.';
+      });
+      _refreshUploadCollections(upload);
+    }
+  }
+
+  List<String> _uploadedFileIds(Iterable<PendingUploadFile> uploads) {
     final fileIds = <String>[];
-    for (final file in files) {
-      final uploaded = await _api.uploadFile(file, category: 'IMAGE');
-      final fileId = uploaded['id'] as String?;
-      if (fileId != null && fileId.isNotEmpty) {
+    for (final upload in uploads) {
+      final fileId = upload.fileId?.trim() ?? '';
+      if (upload.isCompleted && fileId.isNotEmpty) {
         fileIds.add(fileId);
       }
     }
     return fileIds;
+  }
+
+  void _refreshUploadCollections(PendingUploadFile upload) {
+    if (_selectedImages.contains(upload)) {
+      _selectedImages.refresh();
+    }
+    for (final uploads in _ctrl.checkItemImages.values) {
+      if (uploads.contains(upload)) {
+        uploads.refresh();
+      }
+    }
   }
 
   Future<String> _uploadSignature() async {
@@ -2598,10 +2747,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     final uploadedByKey = <String, List<String>>{};
 
     for (final entry in _ctrl.checkItemImages.entries) {
-      final files = entry.value.toList();
-      uploadedByKey[entry.key] = files.isEmpty
-          ? const []
-          : await _uploadFiles(files);
+      final uploads = entry.value.toList();
+      uploadedByKey[entry.key] = _uploadedFileIds(uploads);
     }
 
     return uploadedByKey;
@@ -2705,6 +2852,21 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     return combined;
   }
 
+  String? _imageUploadBlockerMessage() {
+    final uploads = <PendingUploadFile>[
+      ..._selectedImages,
+      ..._ctrl.checkItemImages.values.expand((entries) => entries),
+    ];
+
+    if (uploads.any((upload) => upload.isUploading)) {
+      return 'Please wait for all selected images to finish uploading.';
+    }
+    if (uploads.any((upload) => upload.hasError)) {
+      return 'Retry or remove failed image uploads before submitting.';
+    }
+    return null;
+  }
+
   Future<void> _submitReport() async {
     if (_isSubmitting) {
       return;
@@ -2744,14 +2906,23 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       );
       return;
     }
+    final uploadBlocker = _imageUploadBlockerMessage();
+    if (uploadBlocker != null) {
+      Get.snackbar(
+        'Uploads Pending',
+        uploadBlocker,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
     try {
       final signatureFileId = await _uploadSignature();
-      final generalPictureFileIds = await _uploadFiles(
-        _selectedImages.toList(),
-      );
+      final generalPictureFileIds = _uploadedFileIds(_selectedImages);
       final uploadedImageIdsByKey = await _uploadCheckItemImageIds();
       final responses = await _buildChecklistResponses(uploadedImageIdsByKey);
       final areaResults = _buildDetailedAreaResults(uploadedImageIdsByKey);

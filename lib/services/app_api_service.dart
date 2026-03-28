@@ -2,21 +2,28 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as path;
 
 import 'api_exception.dart';
+import 'cloudinary_upload_service.dart';
 import 'session_service.dart';
 
 class AppApiService {
-  AppApiService({http.Client? client, SessionService? sessionService})
-    : _client = client ?? http.Client(),
-      _sessionService = sessionService ?? Get.find<SessionService>();
+  AppApiService({
+    http.Client? client,
+    SessionService? sessionService,
+    CloudinaryUploadService? cloudinaryUploadService,
+  }) : _client = client ?? http.Client(),
+       _sessionService = sessionService ?? Get.find<SessionService>(),
+       _cloudinaryUploadService =
+           cloudinaryUploadService ?? CloudinaryUploadService();
 
   final http.Client _client;
   final SessionService _sessionService;
+  final CloudinaryUploadService _cloudinaryUploadService;
   Completer<bool>? _refreshCompleter;
 
   static String get baseUrl {
@@ -254,16 +261,66 @@ class AppApiService {
     return _asListOfMaps(data);
   }
 
+  Future<CloudinarySignedUploadPayload>
+  getCloudinarySignedUploadPayload() async {
+    final data = await _send('POST', 'upload/signed-url', body: const {});
+    final payload = CloudinarySignedUploadPayload.fromMap(_asMap(data));
+    if (!payload.isValid) {
+      throw const ApiException(
+        'Backend returned an invalid Cloudinary signed upload payload.',
+      );
+    }
+    return payload;
+  }
+
   Future<Map<String, dynamic>> uploadFile(
     File file, {
     required String category,
+    ProgressCallback? onSendProgress,
   }) async {
-    final data = await _sendMultipart(
-      'files/upload',
-      file: file,
-      fields: {'category': category},
+    CloudinaryUploadResult uploadedAsset;
+    try {
+      final signedPayload = _cloudinaryUploadService.hasUnsignedUploadConfig
+          ? null
+          : await getCloudinarySignedUploadPayload();
+      uploadedAsset = await _cloudinaryUploadService.uploadFile(
+        file,
+        onProgress: onSendProgress,
+        signedPayload: signedPayload,
+      );
+    } on DioException catch (error) {
+      final message = error.response?.data is Map
+          ? (error.response?.data['error']?['message']?.toString() ??
+                error.message)
+          : error.message;
+      throw ApiException(
+        message?.trim().isNotEmpty == true
+            ? message!.trim()
+            : 'Unable to upload the file to Cloudinary right now.',
+      );
+    }
+
+    final data = await _send(
+      'POST',
+      'files/register',
+      body: {
+        'cloudinaryUrl': uploadedAsset.secureUrl,
+        'category': category,
+        'originalFileName': uploadedAsset.originalFileName,
+        'mimeType': uploadedAsset.mimeType,
+        'sizeBytes': uploadedAsset.bytes,
+        if (uploadedAsset.publicId.isNotEmpty)
+          'publicId': uploadedAsset.publicId,
+        if (uploadedAsset.format.isNotEmpty) 'format': uploadedAsset.format,
+        if (uploadedAsset.resourceType.isNotEmpty)
+          'resourceType': uploadedAsset.resourceType,
+      },
     );
-    return _asMap(data);
+    final registered = _asMap(data);
+    if (!registered.containsKey('cloudinaryUrl')) {
+      registered['cloudinaryUrl'] = uploadedAsset.secureUrl;
+    }
+    return registered;
   }
 
   Future<Map<String, dynamic>> listCabinQualityAudits({
@@ -561,55 +618,6 @@ class AppApiService {
         body: body,
         queryParameters: queryParameters,
         authenticated: authenticated,
-        retryOnUnauthorized: false,
-      );
-    }
-
-    final parsed = _decodeResponse(response.body);
-    return _unwrapResponse(response.statusCode, parsed);
-  }
-
-  Future<dynamic> _sendMultipart(
-    String endpoint, {
-    required File file,
-    required Map<String, String> fields,
-    bool retryOnUnauthorized = true,
-  }) async {
-    final request = http.MultipartRequest('POST', buildUri(endpoint));
-    request.headers['Accept'] = 'application/json';
-
-    final accessToken = _sessionService.accessToken;
-    if (accessToken?.isNotEmpty ?? false) {
-      request.headers['Authorization'] = 'Bearer $accessToken';
-    }
-
-    request.fields.addAll(fields);
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'file',
-        file.path,
-        filename: path.basename(file.path),
-      ),
-    );
-
-    http.StreamedResponse streamedResponse;
-    try {
-      streamedResponse = await request.send();
-    } on SocketException {
-      throw const ApiException(
-        'Unable to upload the file because the backend is unreachable.',
-      );
-    }
-
-    final response = await http.Response.fromStream(streamedResponse);
-
-    if (response.statusCode == 401 &&
-        retryOnUnauthorized &&
-        await _refreshAccessToken()) {
-      return _sendMultipart(
-        endpoint,
-        file: file,
-        fields: fields,
         retryOnUnauthorized: false,
       );
     }

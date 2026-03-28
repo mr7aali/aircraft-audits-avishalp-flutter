@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:avislap/models/pending_upload_file.dart';
 import 'package:avislap/utils/app_colors.dart';
 import 'package:avislap/utils/app_icons.dart';
 import 'package:avislap/utils/app_text.dart';
@@ -42,13 +44,13 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
 
   // ── Step 1 — checklist
   final Map<String, String?> _selectedValues = {};
-  final Map<String, List<File>> _uploadedImages = {};
+  final Map<String, List<PendingUploadFile>> _uploadedImages = {};
   final ImagePicker _picker = ImagePicker();
 
   // ── Step 2 — notes + pictures
   final _otherFindingsCtrl = TextEditingController();
   final _additionalCtrl = TextEditingController();
-  final List<File> _step2Images = [];
+  final List<PendingUploadFile> _step2Images = [];
 
   final SignatureController _signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -69,21 +71,25 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   Future<void> _pickImagesFor(String key) async {
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
+      final upload = PendingUploadFile(localFile: File(image.path));
       setState(() {
         _uploadedImages[key] = [
-          ...(_uploadedImages[key] ?? []),
-          File(image.path),
+          ...(_uploadedImages[key] ?? <PendingUploadFile>[]),
+          upload,
         ];
       });
+      unawaited(_uploadPendingImage(upload));
     }
   }
 
   Future<void> _pickStep2Images() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.camera);
     if (image != null) {
+      final upload = PendingUploadFile(localFile: File(image.path));
       setState(() {
-        _step2Images.add(File(image.path));
+        _step2Images.add(upload);
       });
+      unawaited(_uploadPendingImage(upload));
     }
   }
 
@@ -218,16 +224,85 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
     return true;
   }
 
-  Future<List<String>> _uploadFiles(List<File> files, String category) async {
+  Future<void> _uploadPendingImage(PendingUploadFile upload) async {
+    setState(() {
+      upload.status = PendingUploadStatus.uploading;
+      upload.progress = 0;
+      upload.errorMessage = null;
+    });
+
+    try {
+      final uploaded = await _api.uploadFile(
+        upload.localFile,
+        category: 'IMAGE',
+        onSendProgress: (sent, total) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            upload.progress = total <= 0 ? 0 : sent / total;
+          });
+        },
+      );
+      final fileId = uploaded['id']?.toString().trim() ?? '';
+      if (fileId.isEmpty) {
+        throw const ApiException('Image upload did not return a file id.');
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        upload.fileId = fileId;
+        upload.cloudinaryUrl = uploaded['cloudinaryUrl']?.toString().trim();
+        upload.progress = 1;
+        upload.status = PendingUploadStatus.completed;
+        upload.errorMessage = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        upload.status = PendingUploadStatus.failed;
+        upload.errorMessage = 'Unable to upload this image right now.';
+      });
+    }
+  }
+
+  List<String> _uploadedFileIds(List<PendingUploadFile> uploads) {
     final fileIds = <String>[];
-    for (final file in files) {
-      final uploaded = await _api.uploadFile(file, category: category);
-      final fileId = uploaded['id'] as String?;
-      if (fileId != null && fileId.isNotEmpty) {
+    for (final upload in uploads) {
+      final fileId = upload.fileId?.trim() ?? '';
+      if (upload.isCompleted && fileId.isNotEmpty) {
         fileIds.add(fileId);
       }
     }
     return fileIds;
+  }
+
+  String? _imageUploadBlockerMessage() {
+    final uploads = <PendingUploadFile>[
+      ..._step2Images,
+      ..._uploadedImages.values.expand((entries) => entries),
+    ];
+
+    if (uploads.any((upload) => upload.isUploading)) {
+      return 'Please wait for all selected images to finish uploading.';
+    }
+    if (uploads.any((upload) => upload.hasError)) {
+      return 'Retry or remove failed image uploads before sending the report.';
+    }
+    return null;
   }
 
   Future<String> _uploadSignature() async {
@@ -280,13 +355,24 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
       );
       return;
     }
+    final uploadBlocker = _imageUploadBlockerMessage();
+    if (uploadBlocker != null) {
+      Get.snackbar(
+        'Uploads Pending',
+        uploadBlocker,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
     try {
       final gate = _selectedGateRecord();
       final signatureFileId = await _uploadSignature();
-      final generalPictureFileIds = await _uploadFiles(_step2Images, 'IMAGE');
+      final generalPictureFileIds = _uploadedFileIds(_step2Images);
 
       final responses = <Map<String, dynamic>>[];
       for (final item in _checklistItems) {
@@ -301,9 +387,8 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
           throw ApiException('Every checklist item must be marked.');
         }
 
-        final imageFileIds = await _uploadFiles(
-          _uploadedImages[checklistItemId] ?? const <File>[],
-          'IMAGE',
+        final imageFileIds = _uploadedFileIds(
+          _uploadedImages[checklistItemId] ?? const <PendingUploadFile>[],
         );
 
         responses.add({
@@ -549,24 +634,56 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _step2Images.map((file) {
+                    children: _step2Images.map((upload) {
                       return Stack(
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: Image.file(
-                              file,
+                              upload.localFile,
                               width: 72,
                               height: 72,
                               fit: BoxFit.cover,
                             ),
                           ),
+                          if (upload.isUploading || upload.hasError)
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.45),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: upload.isUploading
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  Colors.white,
+                                                ),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          onPressed: () => unawaited(
+                                            _uploadPendingImage(upload),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.refresh_rounded,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
                           Positioned(
                             top: 3,
                             right: 3,
                             child: GestureDetector(
                               onTap: () =>
-                                  setState(() => _step2Images.remove(file)),
+                                  setState(() => _step2Images.remove(upload)),
                               child: Container(
                                 padding: const EdgeInsets.all(2),
                                 decoration: const BoxDecoration(
@@ -786,24 +903,57 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: (_uploadedImages[key] ?? []).map((file) {
+                children: (_uploadedImages[key] ?? []).map((upload) {
                   return Stack(
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.file(
-                          file,
+                          upload.localFile,
                           width: 64,
                           height: 64,
                           fit: BoxFit.cover,
                         ),
                       ),
+                      if (upload.isUploading || upload.hasError)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: upload.isUploading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : IconButton(
+                                      onPressed: () => unawaited(
+                                        _uploadPendingImage(upload),
+                                      ),
+                                      icon: const Icon(
+                                        Icons.refresh_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
                       Positioned(
                         top: 2,
                         right: 2,
                         child: GestureDetector(
                           onTap: () => setState(
-                            () => _uploadedImages[key]!.remove(file),
+                            () => _uploadedImages[key]!.remove(upload),
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(2),

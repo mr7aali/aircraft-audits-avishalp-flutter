@@ -58,6 +58,8 @@ dependencies:
   motion_tab_bar: ^2.0.4
   hold_to_confirm_button: ^0.0.1
   http: ^1.5.0
+  dio: ^5.9.0
+  flutter_image_compress: ^2.4.0
 
 dev_dependencies:
   flutter_test:
