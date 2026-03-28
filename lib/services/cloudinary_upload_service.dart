@@ -83,13 +83,16 @@ class CloudinaryUploadService {
     File imageFile, {
     ProgressCallback? onProgress,
     CloudinarySignedUploadPayload? signedPayload,
+    bool skipCompression = false,
   }) async {
     _ensureConfigured(signedPayload);
 
-    final compressedFile = await _compressImage(imageFile);
-    final compressedBytes = await compressedFile.readAsBytes();
+    final uploadFile = skipCompression
+        ? imageFile
+        : await _compressImage(imageFile);
+    final compressedBytes = await uploadFile.readAsBytes();
     final originalFileName = path.basename(imageFile.path);
-    final mimeType = _inferMimeType(compressedFile.path);
+    final mimeType = _inferMimeType(uploadFile.path);
     final signedCloudName = signedPayload?.cloudName.trim() ?? '';
     final cloudName = signedCloudName.isNotEmpty ? signedCloudName : _cloudName;
     final signedFolder = signedPayload?.folder?.trim() ?? '';
@@ -97,7 +100,7 @@ class CloudinaryUploadService {
     final formData = <String, dynamic>{
       'file': MultipartFile.fromBytes(
         compressedBytes,
-        filename: path.basename(compressedFile.path),
+        filename: path.basename(uploadFile.path),
       ),
       if (signedPayload != null) ...{
         'api_key': signedPayload.apiKey,
@@ -135,7 +138,7 @@ class CloudinaryUploadService {
       mimeType: mimeType,
       format:
           data['format']?.toString().trim() ??
-          _inferFormat(compressedFile.path),
+          _inferFormat(uploadFile.path),
       resourceType: data['resource_type']?.toString().trim() ?? 'image',
     );
   }

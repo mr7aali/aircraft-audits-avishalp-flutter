@@ -69,7 +69,10 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   }
 
   Future<void> _pickImagesFor(String key) async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.rear,
+    );
     if (image != null) {
       final upload = PendingUploadFile(localFile: File(image.path));
       setState(() {
@@ -83,7 +86,10 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   }
 
   Future<void> _pickStep2Images() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.rear,
+    );
     if (image != null) {
       final upload = PendingUploadFile(localFile: File(image.path));
       setState(() {
@@ -570,6 +576,8 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                               ?.trim();
                           final checklistCode = (item['code'] as String?)
                               ?.trim();
+                          final checklistDescription =
+                              (item['description'] as String?)?.trim();
 
                           return _buildAuditRow(
                             checklistLabel?.isNotEmpty == true
@@ -578,6 +586,9 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                                 ? checklistCode!
                                 : 'Checklist Item',
                             checklistItemId,
+                            subtitle: checklistDescription?.isNotEmpty == true
+                                ? checklistDescription
+                                : null,
                             isLast: index == _checklistItems.length - 1,
                             showImageUpload: true,
                           );

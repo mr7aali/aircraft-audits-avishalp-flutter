@@ -696,7 +696,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   // ── 100MB image validation ────────────────────────────
   Future<List<PendingUploadFile>> _pickValidatedImages() async {
-    final picked = await _picker.pickImage(source: ImageSource.camera);
+    final picked = await _picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.rear,
+    );
     final List<PendingUploadFile> valid = [];
     final List<String> oversized = [];
 
@@ -2336,11 +2339,25 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
     setState(() => _isSubmitting = true);
 
-    final isPassed = _ctrl.areaCards.every((c) => c.computedStatus == 'pass');
-
     try {
       final generalPictureFileIds = _uploadedFileIds(_generalImages);
       final hiddenObjectLocationResults = _buildHiddenObjectLocationResults();
+      final hiddenObjectTotalCount = hiddenObjectLocationResults.length;
+      final hiddenObjectFoundCount = hiddenObjectLocationResults
+          .where((entry) => entry['found'] == true)
+          .length;
+      final hiddenObjectNotFoundCount =
+          hiddenObjectTotalCount - hiddenObjectFoundCount;
+      final hasLinkedHiddenObjectSummary =
+          _linkedHiddenObjectAuditId != null && hiddenObjectTotalCount > 0;
+      final isPassed = hasLinkedHiddenObjectSummary
+          ? hiddenObjectNotFoundCount == 0
+          : _ctrl.areaCards.every((c) => c.computedStatus == 'pass');
+      final resultLabel = hasLinkedHiddenObjectSummary
+          ? (isPassed
+                ? 'All Hidden Items Found'
+                : '$hiddenObjectFoundCount of $hiddenObjectTotalCount Hidden Items Found')
+          : (isPassed ? 'All Passed' : 'Some Failed');
 
       if (_linkedHiddenObjectAuditId != null &&
           hiddenObjectLocationResults.isEmpty) {
@@ -2484,11 +2501,31 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                         'Areas',
                         '${_ctrl.areaCards.length} inspected',
                       ),
+                      if (hasLinkedHiddenObjectSummary) ...[
+                        SizedBox(height: 6.h),
+                        _summaryRow(
+                          Icons.visibility_rounded,
+                          'Found',
+                          '$hiddenObjectFoundCount of $hiddenObjectTotalCount',
+                          valueColor: hiddenObjectFoundCount > 0
+                              ? _C.green
+                              : _C.dark,
+                        ),
+                        SizedBox(height: 6.h),
+                        _summaryRow(
+                          Icons.visibility_off_rounded,
+                          'Not Found',
+                          '$hiddenObjectNotFoundCount',
+                          valueColor: hiddenObjectNotFoundCount == 0
+                              ? _C.green
+                              : _C.red,
+                        ),
+                      ],
                       SizedBox(height: 6.h),
                       _summaryRow(
                         Icons.bar_chart_rounded,
                         'Result',
-                        isPassed ? 'All Passed' : 'Some Failed',
+                        resultLabel,
                         valueColor: isPassed ? _C.green : _C.red,
                       ),
                     ],
