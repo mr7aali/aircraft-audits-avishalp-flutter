@@ -37,6 +37,8 @@ class CabinAuditItem {
   final String date;
   final String time;
   final String gate;
+  final String shipNumber;
+  final String flightNumber;
 
   /// Real clean types:
   /// Charter | Diversion | DCS Turn | MSGT Turn |
@@ -54,6 +56,8 @@ class CabinAuditItem {
     required this.date,
     required this.time,
     required this.gate,
+    required this.shipNumber,
+    required this.flightNumber,
     required this.type,
     this.locationImage,
     this.locationImage2,
@@ -81,10 +85,7 @@ class CabinQualityAuditListController extends GetxController {
 
     try {
       final response = await _api.listCabinQualityAudits(
-        queryParameters: {
-          'page': 1,
-          'limit': 100,
-        },
+        queryParameters: {'page': 1, 'limit': 100},
       );
 
       final items = List<Map<String, dynamic>>.from(
@@ -121,7 +122,9 @@ class CabinQualityAuditListController extends GetxController {
     )?.toLocal();
     final profileImageFileId =
         (_session.user?['profileImageFileId'] as String?)?.trim() ?? '';
-    final thumbnails = List<dynamic>.from(item['thumbnails'] as List? ?? const []);
+    final thumbnails = List<dynamic>.from(
+      item['thumbnails'] as List? ?? const [],
+    );
     final thumbnailUrls = thumbnails
         .map((entry) => entry.toString())
         .where((entry) => entry.isNotEmpty)
@@ -137,13 +140,11 @@ class CabinQualityAuditListController extends GetxController {
       date: auditAt == null ? '' : DateFormat('MMM d, y').format(auditAt),
       time: auditAt == null ? '' : DateFormat('h:mm a').format(auditAt),
       gate: _formatGateLabel(item['gateCode']?.toString() ?? ''),
+      shipNumber: (item['shipNumber'] as String?)?.trim() ?? '',
+      flightNumber: (item['flightNumber'] as String?)?.trim() ?? '',
       type: (item['cleanType'] as String?)?.trim() ?? '',
-      locationImage: thumbnailUrls.isNotEmpty
-          ? thumbnailUrls.first
-          : null,
-      locationImage2: thumbnailUrls.length > 1
-          ? thumbnailUrls[1]
-          : null,
+      locationImage: thumbnailUrls.isNotEmpty ? thumbnailUrls.first : null,
+      locationImage2: thumbnailUrls.length > 1 ? thumbnailUrls[1] : null,
     );
   }
 
@@ -418,6 +419,24 @@ class _CabinQualityAuditListScreenState
                     ),
                   ),
                   SizedBox(height: 4.h),
+
+                  if (item.shipNumber.isNotEmpty ||
+                      item.flightNumber.isNotEmpty)
+                    Text(
+                      [
+                        if (item.shipNumber.isNotEmpty)
+                          'Ship ${item.shipNumber}',
+                        if (item.flightNumber.isNotEmpty)
+                          'Flight ${item.flightNumber}',
+                      ].join(' • '),
+                      style: GoogleFonts.poppins(
+                        fontSize: 11.sp,
+                        color: _Colors.textGrey,
+                      ),
+                    ),
+                  if (item.shipNumber.isNotEmpty ||
+                      item.flightNumber.isNotEmpty)
+                    SizedBox(height: 4.h),
 
                   // Type
                   Text(

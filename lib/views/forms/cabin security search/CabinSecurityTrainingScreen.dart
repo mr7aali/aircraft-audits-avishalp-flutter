@@ -97,7 +97,28 @@ class SecurityAreaDetailResult {
     if (checkItems.any((item) => item.status == SecurityAuditStatus.pass)) {
       return SecurityAuditStatus.pass;
     }
+    if (areaPictures.isNotEmpty) {
+      return SecurityAuditStatus.pass;
+    }
     return SecurityAuditStatus.na;
+  }
+
+  List<String> get allPictures {
+    final merged = <String>[];
+    final seen = <String>{};
+
+    for (final picture in [
+      ...areaPictures,
+      ...checkItems.expand((item) => item.pictures),
+    ]) {
+      final normalized = picture.trim();
+      if (normalized.isEmpty || !seen.add(normalized)) {
+        continue;
+      }
+      merged.add(normalized);
+    }
+
+    return merged;
   }
 
   int get passCount => checkItems
@@ -222,8 +243,6 @@ class CabinSecurityController extends GetxController {
   final RxList<TrainingItem> filteredTrainings = <TrainingItem>[].obs;
   final RxInt expandedAreaIndex = (-1).obs;
   final RxBool isLoading = true.obs;
-  final Rx<SecurityAuditStatus?> detailFilter = Rx<SecurityAuditStatus?>(null);
-
   final RxString filterName = ''.obs;
   final RxString filterFromDate = ''.obs;
   final RxString filterToDate = ''.obs;
@@ -1048,6 +1067,15 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
               height: 56.h,
               fit: BoxFit.cover,
               headers: imageHeaders,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) {
+                  return child;
+                }
+                return _buildImageLoadingState(
+                  width: 64.w,
+                  height: 56.h,
+                );
+              },
               errorBuilder: (context, error, stackTrace) =>
                   _buildMissingImage(),
             )
@@ -1111,7 +1139,6 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
     }
 
     controller.expandedAreaIndex.value = -1;
-    controller.detailFilter.value = null;
     _currentPage.value = 0;
     if (_pageController.hasClients) {
       _pageController.jumpToPage(0);
@@ -1174,14 +1201,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
                                 ),
                               ),
                             ),
-                            GestureDetector(
-                              onTap: _showStatusFilterSheet,
-                              child: Icon(
-                                Icons.tune,
-                                color: _Colors.primary,
-                                size: 24.sp,
-                              ),
-                            ),
+                            SizedBox(width: 24.w),
                           ],
                         ),
                       ),
@@ -1268,66 +1288,6 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
       ),
       isScrollControlled: true,
     );
-  }
-
-  void _showStatusFilterSheet() {
-    Get.bottomSheet(
-      Container(
-        padding: EdgeInsets.all(20.w),
-        decoration: BoxDecoration(
-          color: _Colors.cardBg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              'Filter by Status',
-              style: GoogleFonts.poppins(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w700,
-                color: _Colors.primary,
-              ),
-            ),
-            SizedBox(height: 16.h),
-            _buildStatusFilterOption('All', null),
-            _buildStatusFilterOption('Pass', SecurityAuditStatus.pass),
-            _buildStatusFilterOption('Fail', SecurityAuditStatus.fail),
-            SizedBox(height: 10.h),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusFilterOption(String label, SecurityAuditStatus? status) {
-    return Obx(() {
-      final isSelected = controller.detailFilter.value == status;
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(
-          status == null ? Icons.all_inclusive_rounded : status.icon,
-          color: status == null ? _Colors.primary : status.color,
-        ),
-        title: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 14.sp,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? _Colors.primary : _Colors.namePrimary,
-          ),
-        ),
-        trailing: isSelected
-            ? Icon(Icons.check_rounded, color: _Colors.primary)
-            : null,
-        onTap: () {
-          controller.detailFilter.value = status;
-          controller.expandedAreaIndex.value = -1;
-          Get.back();
-        },
-      );
-    });
   }
 
   Widget _buildScoreCard(TrainingItem item) {
@@ -1491,16 +1451,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
 
   Widget _buildAreaList(TrainingItem item) {
     return Obx(() {
-      final currentFilter = controller.detailFilter.value;
-      final filteredAreas = item.areaResults.where((area) {
-        if (currentFilter == null) {
-          return true;
-        }
-        if (area.overallStatus == currentFilter) {
-          return true;
-        }
-        return area.checkItems.any((check) => check.status == currentFilter);
-      }).toList();
+      final filteredAreas = item.areaResults.toList();
 
       if (filteredAreas.isEmpty) {
         return Container(
@@ -1554,7 +1505,6 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
                       ),
                     ),
                   ),
-                  if (currentFilter != null) _statusBadge(currentFilter),
                 ],
               ),
             ),
@@ -1576,13 +1526,12 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
     int index,
     bool isExpanded,
   ) {
-    final overall = area.overallStatus;
     final subtitleParts = <String>[
       if (area.areaId.trim().isNotEmpty &&
           area.areaId.trim().toLowerCase() !=
               area.sectionLabel.trim().toLowerCase())
         'Area: ${area.areaId}',
-      '${area.passCount}P  ${area.failCount}F  ${area.naCount}N/A',
+      '${area.allPictures.length} photo${area.allPictures.length == 1 ? '' : 's'}',
     ];
 
     return Column(
@@ -1626,53 +1575,9 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
                           color: _Colors.textGrey,
                         ),
                       ),
-                      SizedBox(height: 6.h),
-                      LayoutBuilder(
-                        builder: (_, constraints) {
-                          final pct = area.scorePercent / 100;
-                          final barColor = overall == SecurityAuditStatus.fail
-                              ? _Colors.fail
-                              : overall == SecurityAuditStatus.pass
-                              ? _Colors.pass
-                              : _Colors.na;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4.r),
-                                child: Stack(
-                                  children: <Widget>[
-                                    Container(
-                                      height: 5.h,
-                                      width: constraints.maxWidth,
-                                      color: barColor.withValues(alpha: 0.15),
-                                    ),
-                                    Container(
-                                      height: 5.h,
-                                      width: constraints.maxWidth * pct,
-                                      color: barColor,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              SizedBox(height: 3.h),
-                              Text(
-                                '${area.scorePercent.toStringAsFixed(0)}% score',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 10.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: barColor,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
                     ],
                   ),
                 ),
-                _statusBadge(overall),
-                SizedBox(width: 8.w),
                 AnimatedRotation(
                   turns: isExpanded ? 0.25 : 0,
                   duration: const Duration(milliseconds: 200),
@@ -1693,13 +1598,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
   }
 
   Widget _buildExpandedAreaItems(SecurityAreaDetailResult area) {
-    final currentFilter = controller.detailFilter.value;
-    final itemsToShow = area.checkItems.where((item) {
-      if (currentFilter != null && item.status != currentFilter) {
-        return false;
-      }
-      return true;
-    }).toList();
+    final pictures = area.allPictures;
 
     return Container(
       margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
@@ -1711,11 +1610,11 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          if (itemsToShow.isEmpty)
+          if (pictures.isEmpty)
             Padding(
               padding: EdgeInsets.symmetric(vertical: 8.h),
               child: Text(
-                'No inspected items in this section.',
+                'No images were uploaded for this area.',
                 style: GoogleFonts.poppins(
                   fontSize: 12.sp,
                   color: _Colors.textGrey,
@@ -1723,60 +1622,9 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
                 ),
               ),
             )
-          else
-            ...itemsToShow.map((item) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 6.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Icon(
-                          item.status.icon,
-                          color: item.status.color,
-                          size: 16.sp,
-                        ),
-                        SizedBox(width: 10.w),
-                        Expanded(
-                          child: Text(
-                            item.itemName,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12.sp,
-                              color: _Colors.namePrimary,
-                            ),
-                          ),
-                        ),
-                        _statusChip(item.status),
-                      ],
-                    ),
-                    if (item.hashtags.isNotEmpty) ...<Widget>[
-                      SizedBox(height: 8.h),
-                      Wrap(
-                        spacing: 8.w,
-                        runSpacing: 8.h,
-                        children: item.hashtags
-                            .map((tag) => _hashtagChip(tag))
-                            .toList(),
-                      ),
-                    ],
-                    if (item.pictures.isNotEmpty) ...<Widget>[
-                      SizedBox(height: 8.h),
-                      _buildAreaPictures(item.pictures),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          if (area.areaPictures.isNotEmpty) ...<Widget>[
-            if (itemsToShow.isNotEmpty) ...<Widget>[
-              SizedBox(height: 12.h),
-              Divider(color: _Colors.divider),
-              SizedBox(height: 8.h),
-            ],
+          else ...<Widget>[
             Text(
-              'Attachments for ${area.sectionLabel}',
+              'Uploaded images',
               style: GoogleFonts.poppins(
                 fontSize: 12.sp,
                 fontWeight: FontWeight.w600,
@@ -1784,7 +1632,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
               ),
             ),
             SizedBox(height: 8.h),
-            _buildAreaPictures(area.areaPictures),
+            _buildAreaPictures(pictures),
           ],
         ],
       ),
@@ -1897,6 +1745,12 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
         height: height,
         fit: BoxFit.cover,
         headers: imageHeaders,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) {
+            return child;
+          }
+          return _buildImageLoadingState(width: width, height: height);
+        },
         errorBuilder: (context, error, stackTrace) =>
             _buildImagePlaceholder(width: width, height: height),
       );
@@ -1927,6 +1781,30 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
         Icons.image_outlined,
         color: Colors.grey.shade400,
         size: 40.sp,
+      ),
+    );
+  }
+
+  Widget _buildImageLoadingState({
+    required double width,
+    required double height,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Center(
+        child: SizedBox(
+          width: 22.w,
+          height: 22.h,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.2,
+            valueColor: AlwaysStoppedAnimation<Color>(_Colors.primary),
+          ),
+        ),
       ),
     );
   }
@@ -2047,28 +1925,6 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
     );
   }
 
-  Widget _statusBadge(SecurityAuditStatus status) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-      decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(
-          color: status.color.withValues(alpha: 0.4),
-          width: 1,
-        ),
-      ),
-      child: Text(
-        status.label,
-        style: GoogleFonts.poppins(
-          fontSize: 11.sp,
-          fontWeight: FontWeight.w600,
-          color: status.color,
-        ),
-      ),
-    );
-  }
-
   Widget _compactStatusBadge(SecurityAuditStatus status) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 3.h),
@@ -2086,43 +1942,6 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
           fontSize: 11.sp,
           fontWeight: FontWeight.w700,
           color: status.color,
-        ),
-      ),
-    );
-  }
-
-  Widget _statusChip(SecurityAuditStatus status) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-      decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6.r),
-      ),
-      child: Text(
-        status.label,
-        style: GoogleFonts.poppins(
-          fontSize: 10.sp,
-          fontWeight: FontWeight.w600,
-          color: status.color,
-        ),
-      ),
-    );
-  }
-
-  Widget _hashtagChip(String tag) {
-    final label = tag.startsWith('#') ? tag : '#$tag';
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-      decoration: BoxDecoration(
-        color: _Colors.highlightBg,
-        borderRadius: BorderRadius.circular(18.r),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(
-          fontSize: 11.sp,
-          fontWeight: FontWeight.w600,
-          color: _Colors.primary,
         ),
       ),
     );

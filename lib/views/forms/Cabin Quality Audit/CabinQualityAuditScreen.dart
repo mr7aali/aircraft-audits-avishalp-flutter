@@ -121,6 +121,8 @@ class CabinAuditDetailModel {
   final String date;
   final String time;
   final String gate;
+  final String shipNumber;
+  final String flightNumber;
   final String type;
   final String aircraft;
   final String supervisor;
@@ -133,6 +135,8 @@ class CabinAuditDetailModel {
     required this.date,
     required this.time,
     required this.gate,
+    required this.shipNumber,
+    required this.flightNumber,
     required this.type,
     required this.aircraft,
     required this.supervisor,
@@ -142,16 +146,18 @@ class CabinAuditDetailModel {
   });
 
   factory CabinAuditDetailModel.empty() => CabinAuditDetailModel(
-        auditorName: 'Cabin Quality Audit',
-        date: '',
-        time: '',
-        gate: '',
-        type: '',
-        aircraft: '',
-        supervisor: '',
-        auditedAreas: const <AuditedAreaResult>[],
-        pictures: const <String>[],
-      );
+    auditorName: 'Cabin Quality Audit',
+    date: '',
+    time: '',
+    gate: '',
+    shipNumber: '',
+    flightNumber: '',
+    type: '',
+    aircraft: '',
+    supervisor: '',
+    auditedAreas: const <AuditedAreaResult>[],
+    pictures: const <String>[],
+  );
 
   double get scorePercent {
     int total = 0;
@@ -173,19 +179,23 @@ class CabinAuditDetailModel {
   }
 
   bool get hasAnyFail => auditedAreas.any(
-        (area) => area.checkItems.any((c) => c.status == AuditStatus.fail),
-      );
+    (area) => area.checkItems.any((c) => c.status == AuditStatus.fail),
+  );
 }
 
 class _ParsedNotes {
   const _ParsedNotes({
     required this.aircraft,
     required this.supervisor,
+    required this.shipNumber,
+    required this.flightNumber,
     required this.notes,
   });
 
   final String aircraft;
   final String supervisor;
+  final String shipNumber;
+  final String flightNumber;
   final String notes;
 }
 
@@ -212,7 +222,9 @@ class CabinQualityAuditController extends GetxController {
         otherFindings: response['otherFindings']?.toString(),
         additionalNotes: response['additionalNotes']?.toString(),
       );
-      final detailedResults = _parseDetailedAreas(response['detailedResultsJson']);
+      final detailedResults = _parseDetailedAreas(
+        response['detailedResultsJson'],
+      );
       final fallbackResponses = List<Map<String, dynamic>>.from(
         (response['responses'] as List?) ?? const <dynamic>[],
       );
@@ -226,6 +238,14 @@ class CabinQualityAuditController extends GetxController {
         date: auditAt == null ? '' : DateFormat('MMM d, y').format(auditAt),
         time: auditAt == null ? '' : DateFormat('h:mm a').format(auditAt),
         gate: _formatGateLabel(response['gateCodeSnapshot']?.toString() ?? ''),
+        shipNumber:
+            (response['shipNumber'] as String?)?.trim().isNotEmpty == true
+            ? (response['shipNumber'] as String).trim()
+            : parsedNotes.shipNumber,
+        flightNumber:
+            (response['flightNumber'] as String?)?.trim().isNotEmpty == true
+            ? (response['flightNumber'] as String).trim()
+            : parsedNotes.flightNumber,
         type: (response['cleanTypeSnapshot'] as String?)?.trim() ?? '',
         aircraft: parsedNotes.aircraft,
         supervisor: parsedNotes.supervisor,
@@ -287,19 +307,22 @@ class CabinQualityAuditController extends GetxController {
                   (item) => CheckItemResult(
                     itemName: item['itemName']?.toString().trim() ?? 'Item',
                     status: _mapAuditStatus(item['status']?.toString() ?? 'na'),
-                    pictures: List<dynamic>.from(
-                      item['imageFileIds'] as List? ?? const <dynamic>[],
-                    )
-                        .map((fileId) => fileId.toString().trim())
-                        .where((fileId) => fileId.isNotEmpty)
-                        .map(api.buildFileContentUrl)
-                        .toList(),
-                    hashtags: List<dynamic>.from(
-                      item['hashtags'] as List? ?? const <dynamic>[],
-                    )
-                        .map((tag) => tag.toString().trim())
-                        .where((tag) => tag.isNotEmpty)
-                        .toList(),
+                    pictures:
+                        List<dynamic>.from(
+                              item['imageFileIds'] as List? ??
+                                  const <dynamic>[],
+                            )
+                            .map((fileId) => fileId.toString().trim())
+                            .where((fileId) => fileId.isNotEmpty)
+                            .map(api.buildFileContentUrl)
+                            .toList(),
+                    hashtags:
+                        List<dynamic>.from(
+                              item['hashtags'] as List? ?? const <dynamic>[],
+                            )
+                            .map((tag) => tag.toString().trim())
+                            .where((tag) => tag.isNotEmpty)
+                            .toList(),
                   ),
                 )
                 .toList(),
@@ -310,10 +333,9 @@ class CabinQualityAuditController extends GetxController {
   }
 
   AuditedAreaResult _mapFallbackResponseToArea(Map<String, dynamic> item) {
-    final checklistItem =
-        item['checklistItem'] is Map<String, dynamic>
-            ? item['checklistItem'] as Map<String, dynamic>
-            : <String, dynamic>{};
+    final checklistItem = item['checklistItem'] is Map<String, dynamic>
+        ? item['checklistItem'] as Map<String, dynamic>
+        : <String, dynamic>{};
     final label = (checklistItem['label'] as String?)?.trim() ?? 'Checklist';
     final files = List<Map<String, dynamic>>.from(
       (item['files'] as List?) ?? const <dynamic>[],
@@ -360,12 +382,11 @@ class CabinQualityAuditController extends GetxController {
         : 'Gate $trimmed';
   }
 
-  _ParsedNotes _parseNotes({
-    String? otherFindings,
-    String? additionalNotes,
-  }) {
+  _ParsedNotes _parseNotes({String? otherFindings, String? additionalNotes}) {
     String aircraft = '';
     String supervisor = '';
+    String shipNumber = '';
+    String flightNumber = '';
     final noteBlocks = <String>[];
 
     final findings = otherFindings?.trim() ?? '';
@@ -392,6 +413,14 @@ class CabinQualityAuditController extends GetxController {
           supervisor = trimmed.substring('Supervisor/Lead:'.length).trim();
           continue;
         }
+        if (trimmed.startsWith('Ship Number:')) {
+          shipNumber = trimmed.substring('Ship Number:'.length).trim();
+          continue;
+        }
+        if (trimmed.startsWith('Flight Number:')) {
+          flightNumber = trimmed.substring('Flight Number:'.length).trim();
+          continue;
+        }
         noteLines.add(trimmed);
       }
 
@@ -404,6 +433,8 @@ class CabinQualityAuditController extends GetxController {
     return _ParsedNotes(
       aircraft: aircraft,
       supervisor: supervisor,
+      shipNumber: shipNumber,
+      flightNumber: flightNumber,
       notes: noteBlocks.join('\n\n').trim(),
     );
   }
@@ -428,10 +459,7 @@ class CabinQualityAuditController extends GetxController {
 }
 
 class CabinQualityAuditScreen extends StatefulWidget {
-  const CabinQualityAuditScreen({
-    super.key,
-    this.auditId,
-  });
+  const CabinQualityAuditScreen({super.key, this.auditId});
 
   final String? auditId;
 
@@ -767,6 +795,16 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
             SizedBox(height: 10.h),
             Divider(color: _Colors.divider, height: 1),
             SizedBox(height: 12.h),
+            _labelValue(
+              'Ship',
+              d.shipNumber.isEmpty ? 'Not provided' : d.shipNumber,
+            ),
+            SizedBox(height: 8.h),
+            _labelValue(
+              'Flight Number',
+              d.flightNumber.isEmpty ? 'Not provided' : d.flightNumber,
+            ),
+            SizedBox(height: 8.h),
             _labelValue('Type', d.type.isEmpty ? 'Not provided' : d.type),
             SizedBox(height: 8.h),
             _labelValue(
@@ -1305,10 +1343,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
       children: [
         Text(
           '$label : ',
-          style: GoogleFonts.poppins(
-            fontSize: 13.sp,
-            color: _Colors.textGrey,
-          ),
+          style: GoogleFonts.poppins(fontSize: 13.sp, color: _Colors.textGrey),
         ),
         Expanded(
           child: Text(

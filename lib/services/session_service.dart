@@ -43,6 +43,15 @@ class SessionService {
   String get activeStationId =>
       (activeStation?['stationId'] as String?)?.trim() ?? '';
 
+  String get activeRoleCode =>
+      (activeStation?['roleCode'] as String?)?.trim().toUpperCase() ?? '';
+
+  String get activeRoleName =>
+      (activeStation?['roleName'] as String?)?.trim().toUpperCase() ?? '';
+
+  bool get isEmployeeRole =>
+      activeRoleCode == 'EMPLOYEE' || activeRoleName == 'EMPLOYEE';
+
   void saveAuth({
     required String accessToken,
     required String refreshToken,
@@ -69,10 +78,7 @@ class SessionService {
     _box.write(_stationKey, value);
   }
 
-  void savePasswordRecovery({
-    required String token,
-    required String email,
-  }) {
+  void savePasswordRecovery({required String token, required String email}) {
     _box.write(_passwordRecoveryTokenKey, token);
     _box.write(_passwordRecoveryEmailKey, email);
   }
@@ -94,9 +100,7 @@ class SessionService {
   Map<String, dynamic>? _readMap(String key) {
     final raw = _box.read(key);
     if (raw is Map) {
-      return raw.map(
-        (mapKey, value) => MapEntry(mapKey.toString(), value),
-      );
+      return raw.map((mapKey, value) => MapEntry(mapKey.toString(), value));
     }
     return null;
   }

@@ -17,25 +17,13 @@ import '../../../services/session_service.dart';
 import 'LavSafetyObservationScreen.dart';
 
 class LAVSafetyScreen extends StatefulWidget {
+  const LAVSafetyScreen({super.key});
+
   @override
   State<LAVSafetyScreen> createState() => _LAVSafetyScreenState();
 }
 
 class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
-  static const Map<String, String> _questionLabelsByKey = {
-    'chocks': 'Used Chocks',
-    'safety_stop': 'Safety Stop',
-    'guide_cone': 'Used Guide Cone',
-    'mask': 'Face Mask',
-    'gloves': 'Gloves',
-    'shoes': 'Shoes',
-    'dump': 'Dump',
-    'flush': 'Flush',
-    'fill': 'Fill',
-    'walkaround': '360 Walk Around',
-    'chock_removal': 'Chock Removal Process',
-  };
-
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
   bool _isLoading = true;
@@ -79,22 +67,22 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   }
 
   Future<void> _pickImagesFor(String key) async {
-    final List<XFile> images = await _picker.pickMultiImage();
-    if (images.isNotEmpty) {
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
       setState(() {
         _uploadedImages[key] = [
           ...(_uploadedImages[key] ?? []),
-          ...images.map((img) => File(img.path)),
+          File(image.path),
         ];
       });
     }
   }
 
   Future<void> _pickStep2Images() async {
-    final List<XFile> images = await _picker.pickMultiImage();
-    if (images.isNotEmpty) {
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
       setState(() {
-        _step2Images.addAll(images.map((img) => File(img.path)));
+        _step2Images.add(File(image.path));
       });
     }
   }
@@ -123,14 +111,24 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
       final stationId = _session.activeStationId;
       final results = await Future.wait([
         _api.getLavSafetyChecklistItems(),
-        if (stationId.isNotEmpty) _api.getGates(stationId) else Future.value([]),
+        if (stationId.isNotEmpty)
+          _api.getGates(stationId)
+        else
+          Future.value([]),
       ]);
 
-      _checklistItems = List<Map<String, dynamic>>.from(results[0]);
+      _checklistItems = List<Map<String, dynamic>>.from(results[0]).where((
+        item,
+      ) {
+        final checklistItemId = (item['id'] as String?) ?? '';
+        return checklistItemId.isNotEmpty;
+      }).toList();
       _gates = List<Map<String, dynamic>>.from(results[1]);
       _gateOptions = [
         'Please Select One',
-        ..._gates.map((gate) => (gate['gateCode'] as String?) ?? 'Unknown Gate'),
+        ..._gates.map(
+          (gate) => (gate['gateCode'] as String?) ?? 'Unknown Gate',
+        ),
       ];
     } catch (error) {
       final message = error is ApiException
@@ -148,21 +146,6 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
         setState(() => _isLoading = false);
       }
     }
-  }
-
-  String _normalizeLabel(String value) {
-    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
-  }
-
-  Map<String, dynamic>? _findChecklistItem(String label) {
-    final normalizedTarget = _normalizeLabel(label);
-    for (final item in _checklistItems) {
-      final itemLabel = (item['label'] as String?) ?? '';
-      if (_normalizeLabel(itemLabel) == normalizedTarget) {
-        return item;
-      }
-    }
-    return null;
   }
 
   Map<String, dynamic>? _selectedGateRecord() {
@@ -204,8 +187,24 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   }
 
   bool _validateStep1() {
-    for (final key in _questionLabelsByKey.keys) {
-      if ((_selectedValues[key] ?? '').isEmpty) {
+    if (_checklistItems.isEmpty) {
+      Get.snackbar(
+        'Unavailable',
+        'No active LAV checklist items are configured right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return false;
+    }
+
+    for (final item in _checklistItems) {
+      final checklistItemId = (item['id'] as String?) ?? '';
+      if (checklistItemId.isEmpty) {
+        continue;
+      }
+
+      if ((_selectedValues[checklistItemId] ?? '').isEmpty) {
         Get.snackbar(
           'Incomplete',
           'Please mark Pass or Fail for every checklist item.',
@@ -290,24 +289,25 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
       final generalPictureFileIds = await _uploadFiles(_step2Images, 'IMAGE');
 
       final responses = <Map<String, dynamic>>[];
-      for (final entry in _questionLabelsByKey.entries) {
-        final checklistItem = _findChecklistItem(entry.value);
-        if (checklistItem == null) {
-          throw ApiException('Missing checklist mapping for "${entry.value}".');
+      for (final item in _checklistItems) {
+        final checklistItemId = (item['id'] as String?) ?? '';
+        if (checklistItemId.isEmpty) {
+          continue;
         }
 
-        final selectedValue = (_selectedValues[entry.key] ?? '').toUpperCase();
+        final selectedValue = (_selectedValues[checklistItemId] ?? '')
+            .toUpperCase();
         if (selectedValue.isEmpty) {
           throw ApiException('Every checklist item must be marked.');
         }
 
         final imageFileIds = await _uploadFiles(
-          _uploadedImages[entry.key] ?? const <File>[],
+          _uploadedImages[checklistItemId] ?? const <File>[],
           'IMAGE',
         );
 
         responses.add({
-          'checklistItemId': checklistItem['id'],
+          'checklistItemId': checklistItemId,
           'response': selectedValue == 'PASS' ? 'PASS' : 'FAIL',
           'imageFileIds': imageFileIds,
         });
@@ -470,80 +470,33 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                 const SizedBox(height: 20),
 
                 _buildSectionCard(
-                  children: [
-                    _buildAuditRow(
-                      "Used Chocks",
-                      "chocks",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Safety Stop",
-                      "safety_stop",
-                      subtitle:
-                          "Checking if breaks are functional before approaching to aircraft",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Used Guide Cone",
-                      "guide_cone",
-                      subtitle:
-                          "Placing guide code near panel before reversing LAV truck near aircraft",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Face Mask",
-                      "mask",
-                      subtitle: "Was Face Mask used while servicing aircraft?",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Gloves",
-                      "gloves",
-                      subtitle: "Was agent using gloves to service?",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Shoes",
-                      "shoes",
-                      subtitle: "Was agent wearing proper shoes and clothing?",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Dump",
-                      "dump",
-                      subtitle: "Was the aircraft Dumped?",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Flush",
-                      "flush",
-                      subtitle:
-                          "Was the aircraft Flushed with required amount of blue juice?",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Fill",
-                      "fill",
-                      subtitle:
-                          "Was the Aircraft filled with the required amount of Blue Juice?",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "360 Walk Around",
-                      "walkaround",
-                      subtitle:
-                          "LAV Driver Walks around LAV Truck to make sure the truck is clear to move...",
-                      showImageUpload: true,
-                    ),
-                    _buildAuditRow(
-                      "Chock Removal Process",
-                      "chock_removal",
-                      subtitle:
-                          "LAV Driver Takes out forward check and drives up 10 feet before coming back...",
-                      isLast: true,
-                      showImageUpload: true,
-                    ),
-                  ],
+                  children: _checklistItems.isEmpty
+                      ? [
+                          AppText(
+                            'No active checklist items are configured for this station.',
+                            fontSize: 14,
+                            color: AppColors.grey,
+                          ),
+                        ]
+                      : List<Widget>.generate(_checklistItems.length, (index) {
+                          final item = _checklistItems[index];
+                          final checklistItemId = (item['id'] as String?) ?? '';
+                          final checklistLabel = (item['label'] as String?)
+                              ?.trim();
+                          final checklistCode = (item['code'] as String?)
+                              ?.trim();
+
+                          return _buildAuditRow(
+                            checklistLabel?.isNotEmpty == true
+                                ? checklistLabel!
+                                : checklistCode?.isNotEmpty == true
+                                ? checklistCode!
+                                : 'Checklist Item',
+                            checklistItemId,
+                            isLast: index == _checklistItems.length - 1,
+                            showImageUpload: true,
+                          );
+                        }),
                 ),
               ],
             ),
@@ -643,7 +596,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                     border: Border.all(color: AppColors.border),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -689,7 +642,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
+                                color: Colors.red.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Text(
@@ -711,7 +664,9 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFF9FAFB),
                             border: Border.all(
-                              color: AppColors.mainAppColor.withOpacity(0.3),
+                              color: AppColors.mainAppColor.withValues(
+                                alpha: 0.3,
+                              ),
                               width: 1.5,
                             ),
                             borderRadius: BorderRadius.circular(12),
@@ -725,7 +680,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                                     style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.grey.withOpacity(0.3),
+                                      color: Colors.grey.withValues(alpha: 0.3),
                                     ),
                                   ),
                                 ),
@@ -1097,10 +1052,10 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.cloud_upload_outlined, color: AppColors.grey, size: 20),
+          Icon(Icons.camera_alt_outlined, color: AppColors.grey, size: 20),
           const SizedBox(width: 8),
           Text(
-            "Upload an image",
+            "Capture image",
             style: TextStyle(color: AppColors.grey, fontSize: 14),
           ),
         ],

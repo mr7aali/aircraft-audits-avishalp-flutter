@@ -34,26 +34,6 @@ class _C {
   static const Color warnBorder = Color(0xFFFFCC02);
 }
 
-// ─────────────────────────────────────────────
-// PREDEFINED AREAS
-// ─────────────────────────────────────────────
-const List<String> kCabinAreas = [
-  'Front Galley',
-  'Rear Galley',
-  'First Class',
-  'Delta Comfort',
-  'Main Cabin',
-  'FWD LAV',
-  'MID LAV L',
-  'MID LAV R',
-  'AFT LAV L',
-  'AFT LAV R',
-  'Overhead Bins',
-  'Seat Pockets',
-  'Crew Rest Area',
-  'Emergency Equipment',
-];
-
 // Max image size: 100MB
 const int kMaxImageBytes = 100 * 1024 * 1024;
 
@@ -201,12 +181,8 @@ class AreaCard {
         areaName,
       ).map((n) => SubItemStatus(itemName: n)).toList();
 
-  /// overall = fail if ANY subitem fails, pass if ALL pass, else empty
-  String get computedStatus {
-    if (subItems.any((s) => s.status == 'fail')) return 'fail';
-    if (subItems.every((s) => s.status == 'pass')) return 'pass';
-    return '';
-  }
+  /// Uploading the reference photo completes the area.
+  String get computedStatus => imageUploaded ? 'pass' : '';
 
   double get scorePercent {
     final done = subItems.where((s) => s.status.isNotEmpty).toList();
@@ -327,10 +303,6 @@ class CabinQualityController extends GetxController {
 
   final RxList<String> selectedAreas = <String>[].obs;
   final RxList<AreaCard> areaCards = <AreaCard>[].obs;
-  final areaSearchCtrl = TextEditingController();
-  final RxList<String> availableAreas = <String>[].obs;
-  final RxList<String> filteredAreas = <String>[].obs;
-  final RxBool showAreaDropdown = false.obs;
 
   final RxSet<String> selectedSeatIds = <String>{}.obs;
   final RxSet<String> mandatoryAreas = <String>{}.obs;
@@ -377,11 +349,8 @@ class CabinQualityController extends GetxController {
     if (selectedGate.value == 'Please Select One') return false;
     if (shipNumber.value.trim().isEmpty) return false;
     if (selectedAreas.isEmpty) return false;
-    // Every area must have at least 1 hide-image and all subitems marked
+    // Every area must have at least 1 reference photo
     if (areaCards.any((c) => !c.imageUploaded)) return false;
-    if (areaCards.any((c) => c.subItems.any((s) => s.status.isEmpty))) {
-      return false;
-    }
     return true;
   }
 
@@ -394,10 +363,7 @@ class CabinQualityController extends GetxController {
       return 'Please select at least one area to inspect.';
     }
     if (areaCards.any((c) => !c.imageUploaded)) {
-      return 'Please upload a hiding photo for all selected areas.';
-    }
-    if (areaCards.any((c) => c.subItems.any((s) => s.status.isEmpty))) {
-      return 'Please mark Pass or Fail for all subcategory items.';
+      return 'Please capture a reference photo for all selected areas.';
     }
     return '';
   }
@@ -405,9 +371,6 @@ class CabinQualityController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    availableAreas.assignAll(kCabinAreas);
-    filteredAreas.assignAll(availableAreas);
-    areaSearchCtrl.addListener(_onAreaSearch);
     _initAircraftMaps();
     ever(selectedAircraft, (_) {
       resetAuditSelections();
@@ -421,15 +384,6 @@ class CabinQualityController extends GetxController {
     selectedAreas.clear();
     mandatoryAreas.clear();
     imageUploadedMap.clear();
-  }
-
-  void _onAreaSearch() {
-    final q = areaSearchCtrl.text.toLowerCase();
-    filteredAreas.assignAll(
-      q.isEmpty
-          ? availableAreas
-          : availableAreas.where((a) => a.toLowerCase().contains(q)),
-    );
   }
 
   AreaCard ensureAreaCard(String area) {
@@ -448,12 +402,6 @@ class CabinQualityController extends GetxController {
     final card = AreaCard(areaName: area);
     areaCards.add(card);
     return card;
-  }
-
-  void addArea(String area) {
-    ensureAreaCard(area);
-    areaSearchCtrl.clear();
-    showAreaDropdown.value = false;
   }
 
   void removeArea(String area) {
@@ -690,7 +638,6 @@ class CabinQualityController extends GetxController {
 
   @override
   void onClose() {
-    areaSearchCtrl.dispose();
     otherFindingsCtrl.dispose();
     additionalNotesCtrl.dispose();
     super.onClose();
@@ -741,15 +688,15 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   // ── 100MB image validation ────────────────────────────
   Future<List<File>> _pickValidatedImages() async {
-    final picked = await _picker.pickMultiImage();
+    final picked = await _picker.pickImage(source: ImageSource.camera);
     final List<File> valid = [];
     final List<String> oversized = [];
 
-    for (final x in picked) {
-      final file = File(x.path);
+    if (picked != null) {
+      final file = File(picked.path);
       final size = await file.length();
       if (size > kMaxImageBytes) {
-        oversized.add(x.name);
+        oversized.add(picked.name);
       } else {
         valid.add(file);
       }
@@ -805,14 +752,12 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       }
 
       _areaIdsByLabel.clear();
-      final areaLabels = <String>[];
       for (final area in areas) {
         final areaId = area['id']?.toString() ?? '';
         final label = area['label']?.toString().trim() ?? '';
         if (areaId.isEmpty || label.isEmpty) {
           continue;
         }
-        areaLabels.add(label);
         _areaIdsByLabel[label] = areaId;
       }
 
@@ -864,13 +809,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       if (_ctrl.aircraftOptions.isNotEmpty &&
           !_ctrl.aircraftOptions.contains(_ctrl.selectedAircraft.value)) {
         _ctrl.selectedAircraft.value = _ctrl.aircraftOptions.first;
-      }
-
-      if (areaLabels.isNotEmpty) {
-        _ctrl.availableAreas
-          ..clear()
-          ..addAll(areaLabels);
-        _ctrl.filteredAreas.assignAll(areaLabels);
       }
 
       if (_session.fullName.isNotEmpty) {
@@ -1059,6 +997,11 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       return _linkedHiddenObjectAuditId != null &&
           _hiddenObjectAreaByLocationId.isNotEmpty;
     } on ApiException catch (error) {
+      if (_isPermissionDeniedError(error)) {
+        _clearLinkedHiddenObjectAuditState();
+        return true;
+      }
+
       Get.snackbar(
         'Hidden Object Audit',
         error.message,
@@ -1074,13 +1017,19 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     }
   }
 
+  bool _isPermissionDeniedError(ApiException error) {
+    final message = error.message.trim().toLowerCase();
+    return message.contains('permission denied') ||
+        message.contains('forbidden');
+  }
+
   List<Map<String, dynamic>> _buildHiddenObjectLocationResults() {
     final results = <Map<String, dynamic>>[];
     for (final entry in _hiddenObjectAreaByLocationId.entries) {
       final card = _ctrl.areaCards.firstWhereOrNull(
         (item) => item.areaName == entry.value,
       );
-      final found = card?.computedStatus == 'pass';
+      final found = card?.imageUploaded == true;
       results.add({'locationId': entry.key, 'found': found});
     }
 
@@ -1588,20 +1537,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           if (_ctrl.areaCards.any((c) => !c.imageUploaded)) {
             Get.snackbar(
               'Missing Photo',
-              'Please upload a hiding photo for every selected area before continuing.',
-              backgroundColor: _C.red,
-              colorText: Colors.white,
-              snackPosition: SnackPosition.TOP,
-              duration: const Duration(seconds: 3),
-            );
-            return;
-          }
-          if (_ctrl.areaCards.any(
-            (c) => c.subItems.any((s) => s.status.isEmpty),
-          )) {
-            Get.snackbar(
-              'Incomplete',
-              'Please mark Pass or Fail for all subcategory items in each area.',
+              'Please capture a reference photo for every selected area before continuing.',
               backgroundColor: _C.red,
               colorText: Colors.white,
               snackPosition: SnackPosition.TOP,
@@ -1702,67 +1638,13 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 1. Search & Select Area (TOP) ─────────────
-                  _label('Search & Select Area *'),
-                  SizedBox(height: 8.h),
-                  _buildAreaSearchField(),
-                  SizedBox(height: 6.h),
-
-                  // Dropdown suggestions
-                  Obx(() {
-                    if (!_ctrl.showAreaDropdown.value) {
-                      return const SizedBox.shrink();
-                    }
-                    return Container(
-                      constraints: BoxConstraints(maxHeight: 180.h),
-                      decoration: BoxDecoration(
-                        color: _C.white,
-                        borderRadius: BorderRadius.circular(12.r),
-                        border: Border.all(color: _C.border),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ListView(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        children: _ctrl.filteredAreas.map((area) {
-                          final already = _ctrl.selectedAreas.contains(area);
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              area,
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13.sp,
-                                color: already ? _C.grey : _C.dark,
-                              ),
-                            ),
-                            trailing: already
-                                ? Icon(
-                                    Icons.check_rounded,
-                                    color: _C.primary,
-                                    size: 16.sp,
-                                  )
-                                : null,
-                            onTap: already ? null : () => _ctrl.addArea(area),
-                          );
-                        }).toList(),
-                      ),
-                    );
-                  }),
-                  SizedBox(height: 12.h),
-
                   // Area tag chips
                   Obx(() {
                     if (_ctrl.selectedAreas.isEmpty) {
                       return Padding(
                         padding: EdgeInsets.only(bottom: 4.h),
                         child: Text(
-                          'Tap seats on the map or search to add areas.',
+                          'Tap seats or cabin locations on the map to add areas.',
                           style: GoogleFonts.dmSans(
                             fontSize: 12.sp,
                             color: _C.grey,
@@ -1806,7 +1688,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                               ),
                               SizedBox(height: 4.h),
                               Text(
-                                'Review the areas you selected for inspection. Tap seats on the map or use search to add more areas.',
+                                'Review the areas you selected for inspection. Tap seats or cabin locations on the map to add more areas.',
                                 style: GoogleFonts.dmSans(
                                   fontSize: 12.sp,
                                   color: Colors.orange.shade800,
@@ -2333,13 +2215,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       final areaResults = <Map<String, dynamic>>[];
       final detailedAreaResults = <Map<String, dynamic>>[];
       for (final card in _ctrl.areaCards) {
-        final imageFileIds = await _uploadImageFiles([
-          ...card.images,
-          ...card.auditImages,
-        ]);
+        final imageFileIds = await _uploadImageFiles(card.images);
 
         final areaPayload = <String, dynamic>{
-          'result': card.computedStatus == 'pass' ? 'PASS' : 'FAIL',
+          'result': card.imageUploaded ? 'PASS' : 'FAIL',
           if (imageFileIds.isNotEmpty) 'imageFileIds': imageFileIds,
         };
 
@@ -3024,34 +2903,6 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   // ─────────────────────────────────────────────
   // AREA SEARCH FIELD
   // ─────────────────────────────────────────────
-  Widget _buildAreaSearchField() {
-    return TextField(
-      controller: _ctrl.areaSearchCtrl,
-      style: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.dark),
-      onTap: () => _ctrl.showAreaDropdown.value = true,
-      decoration: InputDecoration(
-        hintText: 'Search area (e.g. Front Galley, MID LAV...)',
-        hintStyle: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.grey),
-        prefixIcon: Icon(Icons.search_rounded, size: 18.sp, color: _C.grey),
-        filled: true,
-        fillColor: _C.inputBg,
-        contentPadding: EdgeInsets.symmetric(vertical: 13.h, horizontal: 16.w),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.r),
-          borderSide: BorderSide(color: _C.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.r),
-          borderSide: BorderSide(color: _C.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30.r),
-          borderSide: BorderSide(color: _C.primary, width: 1.5),
-        ),
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────
   // DYNAMIC AREA CARD — delegates to StatefulWidget
   // ─────────────────────────────────────────────
@@ -3214,10 +3065,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.cloud_upload_outlined, size: 20.sp, color: _C.grey),
+          Icon(Icons.camera_alt_outlined, size: 20.sp, color: _C.grey),
           SizedBox(width: 8.w),
           Text(
-            'Upload Images',
+            'Capture image',
             style: GoogleFonts.dmSans(fontSize: 14.sp, color: _C.grey),
           ),
           SizedBox(width: 6.w),
@@ -3278,9 +3129,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         content: Text(
           '1. Read the instructions and reference image carefully.\n'
           '2. Fill in Gate and Ship # in Section 1.\n'
-          '3. Search or tap seats on the map to select areas.\n'
+          '3. Tap seats on the map to select areas.\n'
           '4. Select aircraft type and review the seat map.\n'
-          '5. Mark each area as Pass or Fail, upload a photo.\n'
+          '5. Capture a reference photo for each selected area.\n'
           '6. Add findings, notes, and sign in Section 3 before submitting.',
           style: GoogleFonts.dmSans(
             fontSize: 13.sp,
@@ -3339,21 +3190,6 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
     for (final f in files) {
       ctrl.addAreaImage(card.areaName, f);
     }
-    setState(() {});
-  }
-
-  // ── Phase 2: upload audit photo ───────────────
-  Future<void> _pickAuditImages() async {
-    final files = await widget.pickImages();
-    if (files.isEmpty) return;
-    for (final f in files) {
-      ctrl.addAreaAuditImage(card.areaName, f);
-    }
-    setState(() {});
-  }
-
-  void _setSubItem(String itemName, String status) {
-    ctrl.setSubItemStatus(card.areaName, itemName, status);
     setState(() {});
   }
 
@@ -3430,10 +3266,12 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                         ),
                       ),
                       Text(
-                        '${card.subItems.length} items to check',
+                        imageUploaded
+                            ? 'Reference photo uploaded'
+                            : 'Reference photo required',
                         style: GoogleFonts.dmSans(
                           fontSize: 11.sp,
-                          color: _C.grey,
+                          color: imageUploaded ? _C.green : _C.grey,
                         ),
                       ),
                     ],
@@ -3476,7 +3314,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                     ),
                     SizedBox(width: 8.w),
                     Text(
-                      'Upload reference photo *',
+                      'Capture reference photo *',
                       style: GoogleFonts.dmSans(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w600,
@@ -3504,15 +3342,15 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.cloud_upload_outlined,
+                          Icons.camera_alt_outlined,
                           size: 18.sp,
                           color: imageUploaded ? _C.green : _C.grey,
                         ),
                         SizedBox(width: 8.w),
                         Text(
                           imageUploaded
-                              ? 'Add more photos'
-                              : 'Upload reference photo (max 100MB)',
+                              ? 'Capture more photos'
+                              : 'Capture reference photo (max 100MB)',
                           style: GoogleFonts.dmSans(
                             fontSize: 13.sp,
                             color: imageUploaded ? _C.green : _C.grey,
@@ -3578,330 +3416,49 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
             ),
           ),
 
-          // ── Phase 2: Subcategory audit ───────────
-          if (imageUploaded) ...[
-            Divider(height: 1, color: _C.border),
-            Padding(
-              padding: EdgeInsets.all(14.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          Padding(
+            padding: EdgeInsets.fromLTRB(14.w, 0, 14.w, 14.h),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: imageUploaded
+                    ? _C.green.withValues(alpha: 0.08)
+                    : _C.warnBg,
+                borderRadius: BorderRadius.circular(10.r),
+                border: Border.all(
+                  color: imageUploaded
+                      ? _C.green.withValues(alpha: 0.28)
+                      : _C.warnBorder.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 20.w,
-                        height: 20.w,
-                        decoration: BoxDecoration(
-                          color: overallStatus.isNotEmpty
-                              ? _C.green
-                              : _C.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          overallStatus.isNotEmpty
-                              ? Icons.check_rounded
-                              : Icons.looks_two_rounded,
-                          color: Colors.white,
-                          size: 12.sp,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Text(
-                        'Mark each item as agents find them',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w600,
-                          color: _C.dark,
-                        ),
-                      ),
-                    ],
+                  Icon(
+                    imageUploaded
+                        ? Icons.check_circle_rounded
+                        : Icons.photo_camera_back_outlined,
+                    color: imageUploaded ? _C.green : const Color(0xFFAA7A00),
+                    size: 14.sp,
                   ),
-                  SizedBox(height: 12.h),
-
-                  // Subcategory items
-                  ...card.subItems.map(
-                    (sub) => Padding(
-                      padding: EdgeInsets.only(bottom: 10.h),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              sub.itemName,
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13.sp,
-                                color: _C.dark,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => _setSubItem(sub.itemName, 'pass'),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12.w,
-                                vertical: 6.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: sub.status == 'pass'
-                                    ? _C.green
-                                    : _C.white,
-                                borderRadius: BorderRadius.circular(20.r),
-                                border: Border.all(
-                                  color: sub.status == 'pass'
-                                      ? _C.green
-                                      : _C.border,
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Text(
-                                'Pass',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 12.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: sub.status == 'pass'
-                                      ? Colors.white
-                                      : _C.grey,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 8.w),
-                          GestureDetector(
-                            onTap: () => _setSubItem(sub.itemName, 'fail'),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 12.w,
-                                vertical: 6.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: sub.status == 'fail' ? _C.red : _C.white,
-                                borderRadius: BorderRadius.circular(20.r),
-                                border: Border.all(
-                                  color: sub.status == 'fail'
-                                      ? _C.red
-                                      : _C.border,
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Text(
-                                'Fail',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 12.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: sub.status == 'fail'
-                                      ? Colors.white
-                                      : _C.grey,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      imageUploaded
+                          ? 'Reference photo uploaded. This area is complete.'
+                          : 'Capture a reference photo above to complete this area.',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 11.sp,
+                        color: imageUploaded
+                            ? _C.green
+                            : const Color(0xFF7A5800),
+                        height: 1.4,
                       ),
                     ),
                   ),
-
-                  // Score bar
-                  if (card.subItems.any((s) => s.status.isNotEmpty)) ...[
-                    SizedBox(height: 4.h),
-                    LayoutBuilder(
-                      builder: (_, c) {
-                        final pct = card.scorePercent / 100;
-                        final barColor = overallStatus == 'fail'
-                            ? _C.red
-                            : _C.green;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4.r),
-                              child: Stack(
-                                children: [
-                                  Container(
-                                    height: 5.h,
-                                    width: c.maxWidth,
-                                    color: barColor.withValues(alpha: 0.15),
-                                  ),
-                                  Container(
-                                    height: 5.h,
-                                    width: c.maxWidth * pct,
-                                    color: barColor,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(height: 3.h),
-                            Text(
-                              '${card.scorePercent.toStringAsFixed(0)}% found',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 10.sp,
-                                fontWeight: FontWeight.w600,
-                                color: barColor,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    SizedBox(height: 12.h),
-                  ],
-
-                  // Audit photo upload
-                  GestureDetector(
-                    onTap: _pickAuditImages,
-                    child: Container(
-                      height: 46.h,
-                      decoration: BoxDecoration(
-                        color: _C.white,
-                        borderRadius: BorderRadius.circular(25.r),
-                        border: Border.all(color: _C.border, width: 1.5),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.camera_alt_outlined,
-                            size: 18.sp,
-                            color: _C.grey,
-                          ),
-                          SizedBox(width: 8.w),
-                          Text(
-                            'Upload audit photo (max 100MB)',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13.sp,
-                              color: _C.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (card.auditImages.isNotEmpty) ...[
-                    SizedBox(height: 10.h),
-                    SizedBox(
-                      height: 72.h,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: card.auditImages.length,
-                        itemBuilder: (_, i) => Stack(
-                          children: [
-                            Container(
-                              width: 64.w,
-                              height: 64.h,
-                              margin: EdgeInsets.only(right: 8.w),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8.r),
-                                border: Border.all(color: _C.border),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8.r),
-                                child: Image.file(
-                                  card.auditImages[i],
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 2,
-                              right: 10,
-                              child: GestureDetector(
-                                onTap: () {
-                                  ctrl.removeAreaAuditImage(card.areaName, i);
-                                  setState(() {});
-                                },
-                                child: Container(
-                                  padding: EdgeInsets.all(2.r),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 12.sp,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  // Fail warning
-                  if (overallStatus == 'fail') ...[
-                    SizedBox(height: 8.h),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10.w,
-                        vertical: 8.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _C.red.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            color: _C.red,
-                            size: 14.sp,
-                          ),
-                          SizedBox(width: 6.w),
-                          Expanded(
-                            child: Text(
-                              'This area failed the security search checks.',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 11.sp,
-                                color: _C.red,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
-          ] else ...[
-            Padding(
-              padding: EdgeInsets.fromLTRB(14.w, 0, 14.w, 14.h),
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-                decoration: BoxDecoration(
-                  color: _C.warnBg,
-                  borderRadius: BorderRadius.circular(10.r),
-                  border: Border.all(
-                    color: _C.warnBorder.withValues(alpha: 0.5),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.lock_outline_rounded,
-                      color: const Color(0xFFAA7A00),
-                      size: 14.sp,
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: Text(
-                        'Upload a hiding photo above to unlock the audit checklist.',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 11.sp,
-                          color: const Color(0xFF7A5800),
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+          ),
         ],
       ),
     );

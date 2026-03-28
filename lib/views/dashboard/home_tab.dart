@@ -2,6 +2,7 @@ import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditLis
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/CabinSecurityTrainingScreen.dart';
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
+import 'package:avislap/services/session_service.dart';
 import 'package:avislap/widgets/app_drawer_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -12,6 +13,8 @@ class HomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session = Get.find<SessionService>();
+    final showHiddenObjectAudit = !session.isEmployeeRole;
     const tasksToComplete = 2;
     const completedToday = 0;
     const supervisorName = "John Smith";
@@ -43,6 +46,7 @@ class HomeTab extends StatelessWidget {
                   const SizedBox(height: 24),
                   _TasksSection(
                     toComplete: tasksToComplete,
+                    showHiddenObjectAudit: showHiddenObjectAudit,
                     onCabinAudit: () =>
                         Get.to(() => CabinQualityAuditListScreen()),
                     onLavSafety: () =>
@@ -269,6 +273,7 @@ class _SupervisorCard extends StatelessWidget {
 // =====================
 class _TasksSection extends StatelessWidget {
   final int toComplete;
+  final bool showHiddenObjectAudit;
   final VoidCallback onCabinAudit;
   final VoidCallback onLavSafety;
   final VoidCallback onCabinSecurity;
@@ -276,6 +281,7 @@ class _TasksSection extends StatelessWidget {
 
   const _TasksSection({
     required this.toComplete,
+    required this.showHiddenObjectAudit,
     required this.onCabinAudit,
     required this.onLavSafety,
     required this.onCabinSecurity,
@@ -339,13 +345,15 @@ class _TasksSection extends StatelessWidget {
           icon: Icons.security,
           onTap: onCabinSecurity,
         ),
-        const SizedBox(height: 12),
-        _SecondaryTaskTile(
-          title: "Hidden Object Audit",
-          subtitle: "Hide objects and track live search progress",
-          icon: Icons.visibility_outlined,
-          onTap: onHiddenObject,
-        ),
+        if (showHiddenObjectAudit) ...[
+          const SizedBox(height: 12),
+          _SecondaryTaskTile(
+            title: "Hidden Object Audit",
+            subtitle: "Hide objects and track live search progress",
+            icon: Icons.visibility_outlined,
+            onTap: onHiddenObject,
+          ),
+        ],
       ],
     );
   }
