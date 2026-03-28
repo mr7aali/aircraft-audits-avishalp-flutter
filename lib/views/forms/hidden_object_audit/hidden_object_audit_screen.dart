@@ -837,7 +837,7 @@ class _HiddenObjectAuditWorkflowScreenState
                   SizedBox(height: 12.h),
                   _buildActionCard(detail),
                   SizedBox(height: 12.h),
-                  _buildLegendCard(),
+                  // _buildLegendCard(),
                   SizedBox(height: 12.h),
                   if (detail.seatMap != null)
                     Container(
@@ -1351,27 +1351,27 @@ class _HiddenObjectAuditWorkflowScreenState
     );
   }
 
-  Widget _buildLegendCard() {
-    return Container(
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: _HOColors.border),
-      ),
-      child: Wrap(
-        spacing: 12.w,
-        runSpacing: 12.h,
-        children: [
-          _legendItem('Orange', _HOColors.orange),
-          _legendItem('Blue', _HOColors.blue),
-          _legendItem('Green', _HOColors.green),
-          _legendItem('Red', _HOColors.red),
-          _legendItem('Purple', _HOColors.purple),
-        ],
-      ),
-    );
-  }
+  // Widget _buildLegendCard() {
+  //   return Container(
+  //     padding: EdgeInsets.all(16.w),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white,
+  //       borderRadius: BorderRadius.circular(18.r),
+  //       border: Border.all(color: _HOColors.border),
+  //     ),
+  //     child: Wrap(
+  //       spacing: 12.w,
+  //       runSpacing: 12.h,
+  //       children: [
+  //         _legendItem('Orange', _HOColors.orange),
+  //         _legendItem('Blue', _HOColors.blue),
+  //         _legendItem('Green', _HOColors.green),
+  //         _legendItem('Red', _HOColors.red),
+  //         _legendItem('Purple', _HOColors.purple),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _legendItem(String label, Color color) {
     return Row(
@@ -1745,7 +1745,8 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                                       height: 22,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        value: uploadProgress > 0 &&
+                                        value:
+                                            uploadProgress > 0 &&
                                                 uploadProgress < 1
                                             ? uploadProgress
                                             : null,

@@ -895,9 +895,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                                     ? FontWeight.normal
                                     : FontWeight.w600,
                                 color: statusColor,
-                                decoration: isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
+                                // decoration: isDone
+                                //     ? TextDecoration.lineThrough
+                                //     : null,
                                 decorationColor: statusColor,
                               ),
                             );
