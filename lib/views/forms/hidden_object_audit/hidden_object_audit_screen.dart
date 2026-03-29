@@ -461,15 +461,27 @@ class _HiddenObjectAuditListScreenState
                             runSpacing: 8.h,
                             children: [
                               _metricChip(
-                                'Orange',
+                                _statusLabel('ORANGE'),
                                 item.orange,
                                 _HOColors.orange,
                               ),
-                              _metricChip('Blue', item.blue, _HOColors.blue),
-                              _metricChip('Green', item.green, _HOColors.green),
-                              _metricChip('Red', item.red, _HOColors.red),
                               _metricChip(
-                                'Purple',
+                                _statusLabel('BLUE'),
+                                item.blue,
+                                _HOColors.blue,
+                              ),
+                              _metricChip(
+                                _statusLabel('GREEN'),
+                                item.green,
+                                _HOColors.green,
+                              ),
+                              _metricChip(
+                                _statusLabel('RED'),
+                                item.red,
+                                _HOColors.red,
+                              ),
+                              _metricChip(
+                                _statusLabel('PURPLE'),
                                 item.purple,
                                 _HOColors.purple,
                               ),
@@ -712,8 +724,8 @@ class _HiddenObjectAuditWorkflowScreenState
       Get.snackbar(
         'Audit Created',
         _isUsingManualCreateSelection
-            ? 'Your selected hide locations are ready. Tap each orange location to confirm the hiding point.'
-            : 'Targets generated. Tap each orange location to confirm the hiding point.',
+            ? 'Your selected hide locations are ready. Tap each pre-selected location to confirm the hiding point.'
+            : 'Targets generated. Tap each pre-selected location to confirm the hiding point.',
         backgroundColor: _HOColors.green,
         colorText: Colors.white,
       );
@@ -767,7 +779,7 @@ class _HiddenObjectAuditWorkflowScreenState
       });
       Get.snackbar(
         'Audit Active',
-        'Agents can now begin searching. Blue locations will move to green or red.',
+        'Agents can now begin searching. Hidden locations will move to Pass or Fail.',
         backgroundColor: _HOColors.green,
         colorText: Colors.white,
       );
@@ -1288,11 +1300,19 @@ class _HiddenObjectAuditWorkflowScreenState
             spacing: 8.w,
             runSpacing: 8.h,
             children: [
-              _metricChip('Orange', detail.orange, _HOColors.orange),
-              _metricChip('Blue', detail.blue, _HOColors.blue),
-              _metricChip('Green', detail.green, _HOColors.green),
-              _metricChip('Red', detail.red, _HOColors.red),
-              _metricChip('Purple', detail.purple, _HOColors.purple),
+              _metricChip(
+                _statusLabel('ORANGE'),
+                detail.orange,
+                _HOColors.orange,
+              ),
+              _metricChip(_statusLabel('BLUE'), detail.blue, _HOColors.blue),
+              _metricChip(_statusLabel('GREEN'), detail.green, _HOColors.green),
+              _metricChip(_statusLabel('RED'), detail.red, _HOColors.red),
+              _metricChip(
+                _statusLabel('PURPLE'),
+                detail.purple,
+                _HOColors.purple,
+              ),
             ],
           ),
         ],
@@ -1302,10 +1322,10 @@ class _HiddenObjectAuditWorkflowScreenState
 
   Widget _buildActionCard(HiddenObjectAuditDetail detail) {
     final message = detail.status == 'SETUP'
-        ? 'Tap each orange location, choose a sub-location, and upload a hiding photo.'
+        ? 'Tap each pre-selected location, choose a sub-location, and upload a hiding photo.'
         : detail.status == 'ACTIVE'
-        ? 'Blue locations are now searched from Cabin Security Search Training. This screen stays in setup and status mode only.'
-        : 'This audit is closed. Green means found, red means not found, and purple means an object was found in another location.';
+        ? 'Hidden locations are now searched from Cabin Security Search Training. This screen stays in setup and status mode only.'
+        : 'This audit is closed. Pass means found, Fail means not found, and Ad-hoc means an object was found in another location.';
 
     return Container(
       padding: EdgeInsets.all(16.w),
@@ -1363,11 +1383,11 @@ class _HiddenObjectAuditWorkflowScreenState
   //       spacing: 12.w,
   //       runSpacing: 12.h,
   //       children: [
-  //         _legendItem('Orange', _HOColors.orange),
-  //         _legendItem('Blue', _HOColors.blue),
-  //         _legendItem('Green', _HOColors.green),
-  //         _legendItem('Red', _HOColors.red),
-  //         _legendItem('Purple', _HOColors.purple),
+  //         _legendItem(_statusLabel('ORANGE'), _HOColors.orange),
+  //         _legendItem(_statusLabel('BLUE'), _HOColors.blue),
+  //         _legendItem(_statusLabel('GREEN'), _HOColors.green),
+  //         _legendItem(_statusLabel('RED'), _HOColors.red),
+  //         _legendItem(_statusLabel('PURPLE'), _HOColors.purple),
   //       ],
   //     ),
   //   );
@@ -2357,6 +2377,7 @@ class _SeatPainter extends CustomPainter {
 
 Widget _statusChip(String status) {
   final color = _statusColor(status);
+  final label = _statusLabel(status);
   return Container(
     padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
     decoration: BoxDecoration(
@@ -2364,7 +2385,7 @@ Widget _statusChip(String status) {
       borderRadius: BorderRadius.circular(20.r),
     ),
     child: Text(
-      status,
+      label,
       style: GoogleFonts.dmSans(
         fontSize: 11.sp,
         fontWeight: FontWeight.w700,
@@ -2390,6 +2411,33 @@ Widget _metricChip(String label, int value, Color color) {
       ),
     ),
   );
+}
+
+String _statusLabel(String status) {
+  switch (status.toUpperCase()) {
+    case 'ORANGE':
+      return 'Pre-selected';
+    case 'BLUE':
+      return 'Hidden';
+    case 'GREEN':
+    case 'PASS':
+      return 'Pass';
+    case 'RED':
+    case 'FAIL':
+      return 'Fail';
+    case 'PURPLE':
+    case 'AD_HOC':
+    case 'AD-HOC':
+      return 'Ad-hoc';
+    case 'SETUP':
+      return 'Setup';
+    case 'ACTIVE':
+      return 'Active';
+    case 'CLOSED':
+      return 'Closed';
+    default:
+      return status;
+  }
 }
 
 Color _statusColor(String status) {
