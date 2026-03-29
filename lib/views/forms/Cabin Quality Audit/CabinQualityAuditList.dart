@@ -276,9 +276,7 @@ class _CabinQualityAuditListScreenState
 
         // New Audit button
         GestureDetector(
-          onTap: () {
-            Get.to(() => CabinAuditScreen());
-          },
+          onTap: _handleNewAuditTap,
           child: Container(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
             decoration: BoxDecoration(
@@ -300,6 +298,97 @@ class _CabinQualityAuditListScreenState
   }
 
   // ── Audit List ───────────────────────────────────────────
+  void _handleNewAuditTap() {
+    if (!CabinAuditScreen.hasSavedDraft()) {
+      Get.to(() => const CabinAuditScreen());
+      return;
+    }
+
+    Get.bottomSheet(
+      Container(
+        padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 28.h),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Draft Audit Found',
+              style: GoogleFonts.poppins(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w700,
+                color: _Colors.textDark,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'You have an incomplete Cabin Quality Audit saved as a draft.',
+              style: GoogleFonts.poppins(
+                fontSize: 13.sp,
+                color: _Colors.textGrey,
+              ),
+            ),
+            SizedBox(height: 20.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Get.back();
+                  Get.to(() => const CabinAuditScreen(restoreDraft: true));
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _Colors.primary,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                ),
+                child: Text(
+                  'Continue Draft',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 10.h),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  CabinAuditScreen.clearSavedDraft();
+                  Get.back();
+                  Get.to(() => const CabinAuditScreen());
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _Colors.primary,
+                  side: BorderSide(color: _Colors.primary),
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                ),
+                child: Text(
+                  'Create New Audit',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      backgroundColor: Colors.transparent,
+    );
+  }
+
   Widget _buildAuditList() {
     return Obx(() {
       if (controller.isLoading.value) {

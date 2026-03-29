@@ -6,6 +6,7 @@ import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditLis
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
@@ -467,15 +468,31 @@ class CabinAudit extends GetxController {
 // SCREEN
 // ─────────────────────────────────────────────
 class CabinAuditScreen extends StatefulWidget {
-  const CabinAuditScreen({super.key});
+  const CabinAuditScreen({super.key, this.restoreDraft = false});
+
+  static const String draftStorageKey = 'cabin_quality_audit_draft';
+
+  final bool restoreDraft;
+
+  static bool hasSavedDraft() {
+    final raw = GetStorage().read(draftStorageKey);
+    return raw is Map && raw.isNotEmpty;
+  }
+
+  static void clearSavedDraft() {
+    GetStorage().remove(draftStorageKey);
+  }
+
   @override
   State<CabinAuditScreen> createState() => _CabinAuditScreenState();
 }
 
-class _CabinAuditScreenState extends State<CabinAuditScreen> {
+class _CabinAuditScreenState extends State<CabinAuditScreen>
+    with WidgetsBindingObserver {
   final _ctrl = Get.put(CabinAudit());
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
+  final GetStorage _draftBox = GetStorage();
   final _supervisorCtrl = TextEditingController();
   final _shipNumberCtrl = TextEditingController();
   final _flightNumberCtrl = TextEditingController();
@@ -492,6 +509,11 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   final Map<String, String> _checklistIdsByLabel = <String, String>{};
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _didSubmitSuccessfully = false;
+  String _initialSupervisorValue = '';
+  String _initialGateValue = '';
+  String _initialCleanTypeValue = '';
+  String _initialAircraftValue = '';
 
   final SignatureController signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -538,14 +560,38 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
         '${n.day.toString().padLeft(2, '0')}/${n.year}';
   }
 
+  void _resetWorkingAuditState() {
+    _step = 0;
+    _selectedImages.clear();
+    _ctrl.auditedSeats.clear();
+    _ctrl.checkItemStatuses.clear();
+    _ctrl.checkItemImages.clear();
+    _ctrl.checkItemTags.clear();
+    _ctrl.mandatoryAreas.clear();
+    signatureController.clear();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _resetWorkingAuditState();
     _loadFormData();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _persistDraftIfNeeded();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _persistDraftIfNeeded();
     _supervisorCtrl.dispose();
     _shipNumberCtrl.dispose();
     _flightNumberCtrl.dispose();
@@ -637,6 +683,15 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
         _supervisorCtrl.text = _session.fullName;
       } else if (_session.firstName.isNotEmpty) {
         _supervisorCtrl.text = _session.firstName;
+      }
+
+      _initialSupervisorValue = _supervisorCtrl.text.trim();
+      _initialGateValue = _ctrl.selectedGate.value;
+      _initialCleanTypeValue = _ctrl.selectedCleanType.value;
+      _initialAircraftValue = _ctrl.selectedAircraft.value;
+
+      if (widget.restoreDraft) {
+        _restoreDraft();
       }
     } on ApiException catch (error) {
       Get.snackbar(
@@ -1590,6 +1645,23 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   // ─────────────────────────────────────────────
   void _showSeatSheet(String id) {
     final checkItems = _ctrl.getCheckItemsForSeat(id);
+    final originalAreaStatus = _ctrl.auditedSeats[id];
+    final originalItemStatuses = <String, String>{
+      for (final item in checkItems) item: _ctrl.getCheckItem(id, item),
+    };
+    final originalItemImages = <String, List<PendingUploadFile>>{
+      for (final item in checkItems)
+        if (_ctrl.checkItemImages['$id|$item'] != null)
+          '$id|$item': List<PendingUploadFile>.from(
+            _ctrl.checkItemImages['$id|$item']!,
+          ),
+    };
+    final originalItemTags = <String, List<String>>{
+      for (final item in checkItems)
+        if (_ctrl.checkItemTags['$id|$item'] != null)
+          '$id|$item': List<String>.from(_ctrl.checkItemTags['$id|$item']!),
+    };
+    bool applied = false;
 
     // ── FIXED: Title = actual area ID (e.g. "LAV FWD", "14A") ──
     final areaTitle = _ctrl.getAreaTitle(id);
@@ -1615,6 +1687,42 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           ),
         );
       }
+    }
+
+    void restoreOriginalState() {
+      for (final item in checkItems) {
+        final key = '$id|$item';
+        final originalStatus = originalItemStatuses[item] ?? 'na';
+
+        if (originalStatus == 'na') {
+          _ctrl.checkItemStatuses.remove(key);
+        } else {
+          _ctrl.checkItemStatuses[key] = originalStatus;
+        }
+
+        final images = originalItemImages[key];
+        if (images == null || images.isEmpty) {
+          _ctrl.checkItemImages.remove(key);
+        } else {
+          _ctrl.checkItemImages[key] = RxList<PendingUploadFile>.from(images);
+        }
+
+        final tags = originalItemTags[key];
+        if (tags == null || tags.isEmpty) {
+          _ctrl.checkItemTags.remove(key);
+        } else {
+          _ctrl.checkItemTags[key] = RxList<String>.from(tags);
+        }
+      }
+
+      if (originalAreaStatus == null) {
+        _ctrl.auditedSeats.remove(id);
+      } else {
+        _ctrl.auditedSeats[id] = originalAreaStatus;
+      }
+
+      _ctrl.checkItemStatuses.refresh();
+      _ctrl.auditedSeats.refresh();
     }
 
     Get.bottomSheet(
@@ -1781,6 +1889,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                           ),
                           child: Text(
                             'Mark each item Pass, Fail, or N/A. '
+                            'If you choose Pass or Fail, capture a picture and select at least one hashtag. '
                             'Items not checked are N/A by default. '
                             'Any failed item will automatically fail this area.',
                             style: GoogleFonts.dmSans(
@@ -1876,6 +1985,25 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () {
+                            final blocker = _checkItemRequirementBlocker(
+                              itemStatuses.entries.map(
+                                (entry) => MapEntry(
+                                  '$id|${entry.key}',
+                                  entry.value.value,
+                                ),
+                              ),
+                            );
+                            if (blocker != null) {
+                              Get.snackbar(
+                                'Missing Required Details',
+                                blocker,
+                                snackPosition: SnackPosition.TOP,
+                                backgroundColor: _C.red,
+                                colorText: Colors.white,
+                              );
+                              return;
+                            }
+
                             for (final item in checkItems) {
                               _ctrl.setCheckItem(
                                 id,
@@ -1883,6 +2011,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                                 itemStatuses[item]!.value,
                               );
                             }
+                            applied = true;
+                            _persistDraftIfNeeded();
                             Get.back();
                           },
                           style: ElevatedButton.styleFrom(
@@ -1914,7 +2044,12 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-    );
+    ).whenComplete(() {
+      notesCtrl.dispose();
+      if (!applied) {
+        restoreOriginalState();
+      }
+    });
   }
 
   // ── Check Item Row  ← FIXED: image + hashtag show on pass OR fail ──
@@ -1980,7 +2115,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           // ── Image upload + hashtag per check item ──
           if (hasDetails) ...[
             SizedBox(height: 12.h),
-            _sheetLabel('Capture image for "$itemName":'),
+            _sheetLabel('Capture image for "$itemName" *'),
             _uploadRow(
               onTap: () async {
                 final image = await _captureImage(picker: picker);
@@ -1994,7 +2129,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
             SizedBox(height: 10.h),
             _thumbsRow(imagesList),
             SizedBox(height: 10.h),
-            _sheetLabel('Select Hashtags:'),
+            _sheetLabel('Select Hashtags *'),
             _itemHashtagField(tags: tagsList),
           ],
         ],
@@ -2646,6 +2781,248 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     return fileIds;
   }
 
+  Map<String, dynamic> _serializePendingUpload(PendingUploadFile upload) {
+    return {
+      'path': upload.localFile.path,
+      'fileId': upload.fileId,
+      'cloudinaryUrl': upload.cloudinaryUrl,
+      'progress': upload.progress,
+      'status': upload.status.name,
+      'errorMessage': upload.errorMessage,
+    };
+  }
+
+  PendingUploadFile? _deserializePendingUpload(dynamic raw) {
+    if (raw is! Map) {
+      return null;
+    }
+
+    final map = raw.map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+    final path = map['path']?.toString().trim() ?? '';
+    if (path.isEmpty) {
+      return null;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      return null;
+    }
+
+    final rawStatus = map['status']?.toString().trim().toLowerCase() ?? '';
+    var status = switch (rawStatus) {
+      'completed' => PendingUploadStatus.completed,
+      'failed' => PendingUploadStatus.failed,
+      _ => PendingUploadStatus.failed,
+    };
+
+    final fileId = map['fileId']?.toString().trim();
+    final hasFileId = fileId != null && fileId.isNotEmpty;
+    if (status == PendingUploadStatus.completed && !hasFileId) {
+      status = PendingUploadStatus.failed;
+    }
+
+    return PendingUploadFile(
+      localFile: file,
+      fileId: hasFileId ? fileId : null,
+      cloudinaryUrl: map['cloudinaryUrl']?.toString().trim(),
+      progress: (map['progress'] as num?)?.toDouble() ?? 0,
+      status: status,
+      errorMessage: status == PendingUploadStatus.failed
+          ? (map['errorMessage']?.toString().trim().isNotEmpty == true
+                ? map['errorMessage']?.toString().trim()
+                : 'Upload was interrupted. Tap retry.')
+          : map['errorMessage']?.toString().trim(),
+    );
+  }
+
+  List<PendingUploadFile> _deserializeUploads(dynamic raw) {
+    if (raw is! List) {
+      return const <PendingUploadFile>[];
+    }
+
+    return raw
+        .map(_deserializePendingUpload)
+        .whereType<PendingUploadFile>()
+        .toList();
+  }
+
+  List<String> _readStringList(dynamic raw) {
+    if (raw is! List) {
+      return const <String>[];
+    }
+
+    return raw
+        .map((value) => value.toString().trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
+  }
+
+  Map<String, String> _readStringMap(dynamic raw) {
+    if (raw is! Map) {
+      return const <String, String>{};
+    }
+
+    final mapped = <String, String>{};
+    raw.forEach((key, value) {
+      final normalizedKey = key.toString().trim();
+      final normalizedValue = value?.toString().trim() ?? '';
+      if (normalizedKey.isNotEmpty && normalizedValue.isNotEmpty) {
+        mapped[normalizedKey] = normalizedValue;
+      }
+    });
+    return mapped;
+  }
+
+  bool _hasDraftContent() {
+    final supervisor = _supervisorCtrl.text.trim();
+
+    return _step > 0 ||
+        _shipNumberCtrl.text.trim().isNotEmpty ||
+        _flightNumberCtrl.text.trim().isNotEmpty ||
+        _otherFindingsCtrl.text.trim().isNotEmpty ||
+        _additionalNotesCtrl.text.trim().isNotEmpty ||
+        _selectedImages.isNotEmpty ||
+        _ctrl.mandatoryAreas.isNotEmpty ||
+        _ctrl.auditedSeats.isNotEmpty ||
+        _ctrl.checkItemStatuses.isNotEmpty ||
+        _ctrl.checkItemImages.values.any((uploads) => uploads.isNotEmpty) ||
+        _ctrl.checkItemTags.values.any((tags) => tags.isNotEmpty) ||
+        supervisor != _initialSupervisorValue ||
+        _ctrl.selectedGate.value != _initialGateValue ||
+        _ctrl.selectedCleanType.value != _initialCleanTypeValue ||
+        _ctrl.selectedAircraft.value != _initialAircraftValue;
+  }
+
+  void _persistDraftIfNeeded() {
+    if (_isSubmitting || _didSubmitSuccessfully) {
+      return;
+    }
+
+    if (!_hasDraftContent()) {
+      CabinAuditScreen.clearSavedDraft();
+      return;
+    }
+
+    final draft = <String, dynamic>{
+      'savedAt': DateTime.now().toIso8601String(),
+      'step': _step,
+      'selectedAircraft': _ctrl.selectedAircraft.value,
+      'selectedGate': _ctrl.selectedGate.value,
+      'selectedCleanType': _ctrl.selectedCleanType.value,
+      'supervisorName': _supervisorCtrl.text.trim(),
+      'shipNumber': _shipNumberCtrl.text.trim(),
+      'flightNumber': _flightNumberCtrl.text.trim(),
+      'otherFindings': _otherFindingsCtrl.text.trim(),
+      'additionalNotes': _additionalNotesCtrl.text.trim(),
+      'mandatoryAreas': _ctrl.mandatoryAreas.toList(),
+      'auditedSeats': Map<String, String>.from(_ctrl.auditedSeats),
+      'checkItemStatuses': Map<String, String>.from(_ctrl.checkItemStatuses),
+      'selectedImages': _selectedImages
+          .map(_serializePendingUpload)
+          .toList(growable: false),
+      'checkItemImages': {
+        for (final entry in _ctrl.checkItemImages.entries)
+          if (entry.value.isNotEmpty)
+            entry.key: entry.value
+                .map(_serializePendingUpload)
+                .toList(growable: false),
+      },
+      'checkItemTags': {
+        for (final entry in _ctrl.checkItemTags.entries)
+          if (entry.value.isNotEmpty)
+            entry.key: entry.value
+                .map((tag) => tag.trim())
+                .where((tag) => tag.isNotEmpty)
+                .toList(growable: false),
+      },
+    };
+
+    _draftBox.write(CabinAuditScreen.draftStorageKey, draft);
+  }
+
+  void _restoreDraft() {
+    final raw = _draftBox.read(CabinAuditScreen.draftStorageKey);
+    if (raw is! Map) {
+      return;
+    }
+
+    final draft = raw.map((key, value) => MapEntry(key.toString(), value));
+
+    final draftAircraft = draft['selectedAircraft']?.toString().trim() ?? '';
+    if (draftAircraft.isNotEmpty &&
+        _ctrl.aircraftOptions.contains(draftAircraft)) {
+      _ctrl.selectedAircraft.value = draftAircraft;
+    }
+
+    final draftGate = draft['selectedGate']?.toString().trim() ?? '';
+    if (draftGate.isNotEmpty && _ctrl.gateOptions.contains(draftGate)) {
+      _ctrl.selectedGate.value = draftGate;
+    }
+
+    final draftCleanType = draft['selectedCleanType']?.toString().trim() ?? '';
+    if (draftCleanType.isNotEmpty &&
+        _ctrl.cleanTypeOptions.contains(draftCleanType)) {
+      _ctrl.selectedCleanType.value = draftCleanType;
+    }
+
+    _supervisorCtrl.text =
+        draft['supervisorName']?.toString() ?? _supervisorCtrl.text;
+    _shipNumberCtrl.text = draft['shipNumber']?.toString() ?? '';
+    _flightNumberCtrl.text = draft['flightNumber']?.toString() ?? '';
+    _otherFindingsCtrl.text = draft['otherFindings']?.toString() ?? '';
+    _additionalNotesCtrl.text = draft['additionalNotes']?.toString() ?? '';
+
+    final draftStep = (draft['step'] as num?)?.toInt() ?? 0;
+    _step = draftStep.clamp(0, 2).toInt();
+
+    _ctrl.mandatoryAreas.assignAll(_readStringList(draft['mandatoryAreas']));
+    _ctrl.auditedSeats.assignAll(_readStringMap(draft['auditedSeats']));
+    _ctrl.checkItemStatuses.assignAll(
+      _readStringMap(draft['checkItemStatuses']),
+    );
+
+    _selectedImages.assignAll(_deserializeUploads(draft['selectedImages']));
+
+    _ctrl.checkItemImages.clear();
+    final rawCheckItemImages = draft['checkItemImages'];
+    if (rawCheckItemImages is Map) {
+      rawCheckItemImages.forEach((key, value) {
+        final uploads = _deserializeUploads(value);
+        if (uploads.isNotEmpty) {
+          _ctrl.checkItemImages[key.toString()] = RxList<PendingUploadFile>.from(
+            uploads,
+          );
+        }
+      });
+    }
+
+    _ctrl.checkItemTags.clear();
+    final rawCheckItemTags = draft['checkItemTags'];
+    if (rawCheckItemTags is Map) {
+      rawCheckItemTags.forEach((key, value) {
+        final tags = _readStringList(value);
+        if (tags.isNotEmpty) {
+          _ctrl.checkItemTags[key.toString()] = RxList<String>.from(tags);
+        }
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      Get.snackbar(
+        'Draft Restored',
+        'Your incomplete cabin audit draft is ready to continue.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: _C.primary,
+        colorText: Colors.white,
+      );
+    });
+  }
+
   void _refreshUploadCollections(PendingUploadFile upload) {
     if (_selectedImages.contains(upload)) {
       _selectedImages.refresh();
@@ -2853,6 +3230,47 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     return combined;
   }
 
+  bool _requiresCheckItemEvidence(String status) {
+    final normalized = status.trim().toLowerCase();
+    return normalized == 'pass' || normalized == 'fail';
+  }
+
+  String? _checkItemRequirementBlocker(
+    Iterable<MapEntry<String, String>> statusEntries,
+  ) {
+    for (final entry in statusEntries) {
+      if (!_requiresCheckItemEvidence(entry.value)) {
+        continue;
+      }
+
+      final separatorIndex = entry.key.indexOf('|');
+      if (separatorIndex < 0) {
+        continue;
+      }
+
+      final seatId = entry.key.substring(0, separatorIndex);
+      final itemName = entry.key.substring(separatorIndex + 1);
+      final uploads =
+          _ctrl.checkItemImages[entry.key] ?? <PendingUploadFile>[].obs;
+      final tags = _ctrl.checkItemTags[entry.key] ?? <String>[].obs;
+
+      if (uploads.any((upload) => upload.isUploading)) {
+        return 'Please wait for the picture upload to finish for "$itemName" in $seatId.';
+      }
+      if (uploads.any((upload) => upload.hasError)) {
+        return 'Retry or remove the failed picture for "$itemName" in $seatId.';
+      }
+      if (!uploads.any((upload) => upload.isCompleted)) {
+        return 'Capture a picture for "$itemName" in $seatId after selecting Pass or Fail.';
+      }
+      if (!tags.any((tag) => tag.trim().isNotEmpty)) {
+        return 'Select at least one hashtag for "$itemName" in $seatId after selecting Pass or Fail.';
+      }
+    }
+
+    return null;
+  }
+
   String? _imageUploadBlockerMessage() {
     final uploads = <PendingUploadFile>[
       ..._selectedImages,
@@ -2918,6 +3336,19 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       );
       return;
     }
+    final checkItemBlocker = _checkItemRequirementBlocker(
+      _ctrl.checkItemStatuses.entries,
+    );
+    if (checkItemBlocker != null) {
+      Get.snackbar(
+        'Incomplete Audit',
+        checkItemBlocker,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
@@ -2949,6 +3380,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
         return;
       }
 
+      _didSubmitSuccessfully = true;
+      CabinAuditScreen.clearSavedDraft();
       Get.snackbar(
         'Success',
         'Audit report submitted!',
