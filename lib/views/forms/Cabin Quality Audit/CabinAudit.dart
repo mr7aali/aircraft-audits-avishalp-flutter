@@ -1590,6 +1590,23 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
   // ─────────────────────────────────────────────
   void _showSeatSheet(String id) {
     final checkItems = _ctrl.getCheckItemsForSeat(id);
+    final originalAreaStatus = _ctrl.auditedSeats[id];
+    final originalItemStatuses = <String, String>{
+      for (final item in checkItems) item: _ctrl.getCheckItem(id, item),
+    };
+    final originalItemImages = <String, List<PendingUploadFile>>{
+      for (final item in checkItems)
+        if (_ctrl.checkItemImages['$id|$item'] != null)
+          '$id|$item': List<PendingUploadFile>.from(
+            _ctrl.checkItemImages['$id|$item']!,
+          ),
+    };
+    final originalItemTags = <String, List<String>>{
+      for (final item in checkItems)
+        if (_ctrl.checkItemTags['$id|$item'] != null)
+          '$id|$item': List<String>.from(_ctrl.checkItemTags['$id|$item']!),
+    };
+    bool applied = false;
 
     // ── FIXED: Title = actual area ID (e.g. "LAV FWD", "14A") ──
     final areaTitle = _ctrl.getAreaTitle(id);
@@ -1615,6 +1632,42 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           ),
         );
       }
+    }
+
+    void restoreOriginalState() {
+      for (final item in checkItems) {
+        final key = '$id|$item';
+        final originalStatus = originalItemStatuses[item] ?? 'na';
+
+        if (originalStatus == 'na') {
+          _ctrl.checkItemStatuses.remove(key);
+        } else {
+          _ctrl.checkItemStatuses[key] = originalStatus;
+        }
+
+        final images = originalItemImages[key];
+        if (images == null || images.isEmpty) {
+          _ctrl.checkItemImages.remove(key);
+        } else {
+          _ctrl.checkItemImages[key] = RxList<PendingUploadFile>.from(images);
+        }
+
+        final tags = originalItemTags[key];
+        if (tags == null || tags.isEmpty) {
+          _ctrl.checkItemTags.remove(key);
+        } else {
+          _ctrl.checkItemTags[key] = RxList<String>.from(tags);
+        }
+      }
+
+      if (originalAreaStatus == null) {
+        _ctrl.auditedSeats.remove(id);
+      } else {
+        _ctrl.auditedSeats[id] = originalAreaStatus;
+      }
+
+      _ctrl.checkItemStatuses.refresh();
+      _ctrl.auditedSeats.refresh();
     }
 
     Get.bottomSheet(
@@ -1781,6 +1834,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                           ),
                           child: Text(
                             'Mark each item Pass, Fail, or N/A. '
+                            'If you choose Pass or Fail, capture a picture and select at least one hashtag. '
                             'Items not checked are N/A by default. '
                             'Any failed item will automatically fail this area.',
                             style: GoogleFonts.dmSans(
@@ -1876,6 +1930,25 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () {
+                            final blocker = _checkItemRequirementBlocker(
+                              itemStatuses.entries.map(
+                                (entry) => MapEntry(
+                                  '$id|${entry.key}',
+                                  entry.value.value,
+                                ),
+                              ),
+                            );
+                            if (blocker != null) {
+                              Get.snackbar(
+                                'Missing Required Details',
+                                blocker,
+                                snackPosition: SnackPosition.TOP,
+                                backgroundColor: _C.red,
+                                colorText: Colors.white,
+                              );
+                              return;
+                            }
+
                             for (final item in checkItems) {
                               _ctrl.setCheckItem(
                                 id,
@@ -1883,6 +1956,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
                                 itemStatuses[item]!.value,
                               );
                             }
+                            applied = true;
                             Get.back();
                           },
                           style: ElevatedButton.styleFrom(
@@ -1914,7 +1988,12 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-    );
+    ).whenComplete(() {
+      notesCtrl.dispose();
+      if (!applied) {
+        restoreOriginalState();
+      }
+    });
   }
 
   // ── Check Item Row  ← FIXED: image + hashtag show on pass OR fail ──
@@ -1980,7 +2059,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
           // ── Image upload + hashtag per check item ──
           if (hasDetails) ...[
             SizedBox(height: 12.h),
-            _sheetLabel('Capture image for "$itemName":'),
+            _sheetLabel('Capture image for "$itemName" *'),
             _uploadRow(
               onTap: () async {
                 final image = await _captureImage(picker: picker);
@@ -1994,7 +2073,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
             SizedBox(height: 10.h),
             _thumbsRow(imagesList),
             SizedBox(height: 10.h),
-            _sheetLabel('Select Hashtags:'),
+            _sheetLabel('Select Hashtags *'),
             _itemHashtagField(tags: tagsList),
           ],
         ],
@@ -2853,6 +2932,47 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
     return combined;
   }
 
+  bool _requiresCheckItemEvidence(String status) {
+    final normalized = status.trim().toLowerCase();
+    return normalized == 'pass' || normalized == 'fail';
+  }
+
+  String? _checkItemRequirementBlocker(
+    Iterable<MapEntry<String, String>> statusEntries,
+  ) {
+    for (final entry in statusEntries) {
+      if (!_requiresCheckItemEvidence(entry.value)) {
+        continue;
+      }
+
+      final separatorIndex = entry.key.indexOf('|');
+      if (separatorIndex < 0) {
+        continue;
+      }
+
+      final seatId = entry.key.substring(0, separatorIndex);
+      final itemName = entry.key.substring(separatorIndex + 1);
+      final uploads =
+          _ctrl.checkItemImages[entry.key] ?? <PendingUploadFile>[].obs;
+      final tags = _ctrl.checkItemTags[entry.key] ?? <String>[].obs;
+
+      if (uploads.any((upload) => upload.isUploading)) {
+        return 'Please wait for the picture upload to finish for "$itemName" in $seatId.';
+      }
+      if (uploads.any((upload) => upload.hasError)) {
+        return 'Retry or remove the failed picture for "$itemName" in $seatId.';
+      }
+      if (!uploads.any((upload) => upload.isCompleted)) {
+        return 'Capture a picture for "$itemName" in $seatId after selecting Pass or Fail.';
+      }
+      if (!tags.any((tag) => tag.trim().isNotEmpty)) {
+        return 'Select at least one hashtag for "$itemName" in $seatId after selecting Pass or Fail.';
+      }
+    }
+
+    return null;
+  }
+
   String? _imageUploadBlockerMessage() {
     final uploads = <PendingUploadFile>[
       ..._selectedImages,
@@ -2912,6 +3032,19 @@ class _CabinAuditScreenState extends State<CabinAuditScreen> {
       Get.snackbar(
         'Uploads Pending',
         uploadBlocker,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+    final checkItemBlocker = _checkItemRequirementBlocker(
+      _ctrl.checkItemStatuses.entries,
+    );
+    if (checkItemBlocker != null) {
+      Get.snackbar(
+        'Incomplete Audit',
+        checkItemBlocker,
         snackPosition: SnackPosition.TOP,
         backgroundColor: Colors.red,
         colorText: Colors.white,
