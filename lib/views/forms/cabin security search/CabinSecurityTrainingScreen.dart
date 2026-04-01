@@ -1007,7 +1007,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
           ),
           child: CircleAvatar(
             radius: 26.r,
-            backgroundColor: status.color.withValues(alpha: 0.12),
+            backgroundColor: status.color.withOpacity(0.12),
             child: Text(
               initials,
               style: GoogleFonts.poppins(
@@ -1298,9 +1298,9 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
       margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: scoreColor.withValues(alpha: 0.08),
+        color: scoreColor.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: scoreColor.withValues(alpha: 0.3)),
+        border: Border.all(color: scoreColor.withOpacity(0.3)),
       ),
       child: Row(
         children: <Widget>[
@@ -1843,7 +1843,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
         color: const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(10.r),
         border: Border.all(
-          color: const Color(0xFFFFCC02).withValues(alpha: 0.4),
+          color: const Color(0xFFFFCC02).withOpacity(0.4),
         ),
       ),
       child: Row(
@@ -1929,10 +1929,10 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 3.h),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.1),
+        color: status.color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6.r),
         border: Border.all(
-          color: status.color.withValues(alpha: 0.4),
+          color: status.color.withOpacity(0.4),
           width: 1,
         ),
       ),

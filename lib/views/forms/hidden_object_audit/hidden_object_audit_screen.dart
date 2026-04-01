@@ -1199,7 +1199,7 @@ class _HiddenObjectAuditWorkflowScreenState
                               vertical: 6.h,
                             ),
                             decoration: BoxDecoration(
-                              color: _HOColors.orange.withValues(alpha: 0.12),
+                              color: _HOColors.orange.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(20.r),
                             ),
                             child: Text(
@@ -1753,7 +1753,7 @@ class _LocationActionSheetState extends State<_LocationActionSheet> {
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.45),
+                          color: Colors.black.withOpacity(0.45),
                           borderRadius: BorderRadius.circular(12.r),
                         ),
                         child: Center(
@@ -2351,7 +2351,7 @@ class _SeatPainter extends CustomPainter {
     );
 
     final armPaint = Paint()
-      ..color = color.withValues(alpha: 0.85)
+      ..color = color.withOpacity(0.85)
       ..style = PaintingStyle.fill;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -2381,7 +2381,7 @@ Widget _statusChip(String status) {
   return Container(
     padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.14),
+      color: color.withOpacity(0.14),
       borderRadius: BorderRadius.circular(20.r),
     ),
     child: Text(
@@ -2399,7 +2399,7 @@ Widget _metricChip(String label, int value, Color color) {
   return Container(
     padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
+      color: color.withOpacity(0.12),
       borderRadius: BorderRadius.circular(20.r),
     ),
     child: Text(

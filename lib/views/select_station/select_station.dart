@@ -238,10 +238,10 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
+                      color: Colors.white.withOpacity(0.18),
                       borderRadius: BorderRadius.circular(20.r),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.30),
+                        color: Colors.white.withOpacity(0.30),
                         width: 1,
                       ),
                     ),
@@ -283,7 +283,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                     borderRadius: BorderRadius.circular(28.r),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.07),
+                        color: Colors.black.withOpacity(0.07),
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       ),
@@ -313,7 +313,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                           width: double.infinity,
                           decoration: BoxDecoration(
                             color: (_isLoading || _stations.isEmpty)
-                                ? _C.blue.withValues(alpha: 0.45)
+                                ? _C.blue.withOpacity(0.45)
                                 : _C.blue,
                             borderRadius: BorderRadius.circular(30.r),
                           ),
@@ -485,18 +485,18 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                             margin: EdgeInsets.only(bottom: 10.h),
                             decoration: BoxDecoration(
                               color: _selectedStationId == station.id
-                                  ? _C.blue.withValues(alpha: 0.08)
+                                  ? _C.blue.withOpacity(0.08)
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(18.r),
                               border: Border.all(
                                 color: _selectedStationId == station.id
-                                    ? _C.blue.withValues(alpha: 0.45)
+                                    ? _C.blue.withOpacity(0.45)
                                     : _C.border,
                                 width: _selectedStationId == station.id ? 1.6 : 1.1,
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.03),
+                                  color: Colors.black.withOpacity(0.03),
                                   blurRadius: 10,
                                   offset: const Offset(0, 4),
                                 ),
@@ -564,7 +564,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
           width: 134.w,
           height: 5.h,
           decoration: BoxDecoration(
-            color: _C.ink.withValues(alpha: 0.15),
+            color: _C.ink.withOpacity(0.15),
             borderRadius: BorderRadius.circular(3.r),
           ),
         ),

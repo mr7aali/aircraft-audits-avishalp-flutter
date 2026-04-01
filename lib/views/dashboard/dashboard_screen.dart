@@ -5,6 +5,7 @@ import 'package:motion_tab_bar/MotionTabBar.dart';
 import 'package:motion_tab_bar/MotionTabBarController.dart';
 import '../../utils/app_colors.dart';
 import 'home_tab.dart';
+import 'audit_tab.dart';
 import 'history_tab.dart';
 import 'profile_tab.dart';
 
@@ -23,7 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     super.initState();
     _motionTabBarController = MotionTabBarController(
       initialIndex: 0,
-      length: 4,
+      length: 5,
       vsync: this,
     );
   }
@@ -47,6 +48,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           controller: _motionTabBarController,
           children: const [
             HomeTab(),
+            AuditTab(),
             InboxScreen(),
             HistoryTab(),
             ProfileTab(),
@@ -57,14 +59,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         controller: _motionTabBarController,
         initialSelectedTab: "Home",
         useSafeArea: true,
-        labels: const ["Home", "Chat", "History", "Profile"],
+        labels: const ["Home", "Audit", "Chat", "History", "Profile"],
         icons: const [
           Icons.home_outlined,
+          Icons.assignment_outlined,
           Icons.chat_bubble_outline,
           Icons.history,
           Icons.person_outline,
         ],
-        badges: const [null, null, null, null],
+        badges: const [null, null, null, null, null],
         tabSize: 50,
         tabBarHeight: 55,
         textStyle: const TextStyle(

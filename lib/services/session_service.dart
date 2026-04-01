@@ -43,6 +43,9 @@ class SessionService {
   String get activeStationId =>
       (activeStation?['stationId'] as String?)?.trim() ?? '';
 
+  String get activeStationCode =>
+      (activeStation?['stationCode'] as String?)?.trim().toUpperCase() ?? '';
+
   String get activeRoleCode =>
       (activeStation?['roleCode'] as String?)?.trim().toUpperCase() ?? '';
 

@@ -468,12 +468,20 @@ class CabinAudit extends GetxController {
 // SCREEN
 // ─────────────────────────────────────────────
 class CabinAuditScreen extends StatefulWidget {
-  const CabinAuditScreen({super.key, this.restoreDraft = false});
+  final bool restoreDraft;
+  final String? initialShipNumber;
+  final String? initialGateNumber;
+  final String? initialFlightNumber;
+
+  const CabinAuditScreen({
+    super.key,
+    this.restoreDraft = false,
+    this.initialShipNumber,
+    this.initialGateNumber,
+    this.initialFlightNumber,
+  });
 
   static const String draftStorageKey = 'cabin_quality_audit_draft';
-
-  final bool restoreDraft;
-
   static bool hasSavedDraft() {
     final raw = GetStorage().read(draftStorageKey);
     return raw is Map && raw.isNotEmpty;
@@ -683,6 +691,43 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         _supervisorCtrl.text = _session.fullName;
       } else if (_session.firstName.isNotEmpty) {
         _supervisorCtrl.text = _session.firstName;
+      }
+
+      // Auto-populate initial values from API
+      if (widget.initialShipNumber != null && widget.initialShipNumber!.isNotEmpty) {
+        _shipNumberCtrl.text = widget.initialShipNumber!.trim().toUpperCase();
+      }
+      if (widget.initialFlightNumber != null && widget.initialFlightNumber!.isNotEmpty) {
+        _flightNumberCtrl.text = widget.initialFlightNumber!.trim().toUpperCase();
+      }
+      if (widget.initialGateNumber != null &&
+          widget.initialGateNumber!.isNotEmpty) {
+        final gText = widget.initialGateNumber!.trim().toLowerCase();
+
+        // Skip if the provided gate is just a placeholder
+        if (gText != "—" && gText != "n/a" && gText != "unknown") {
+          // Normalization: remove non-alphanumeric, then remove leading zeros from numbers
+          String normalize(String s) {
+            return s
+                .toLowerCase()
+                .replaceAll(RegExp(r'[^a-z0-9]'), '')
+                .replaceAll(RegExp(r'0+([1-9])'), r'$1'); // e.g. "a01" -> "a1"
+          }
+
+          final normalizedInput = normalize(gText);
+
+          final match = _ctrl.gateOptions.firstWhereOrNull((opt) {
+            if (opt.toLowerCase().contains('select')) return false;
+            final normalizedOpt = normalize(opt);
+            // Check for mutual containment (e.g. "a1" in "gatea1" or vice-versa)
+            return normalizedOpt.contains(normalizedInput) ||
+                normalizedInput.contains(normalizedOpt);
+          });
+
+          if (match != null) {
+            _ctrl.selectedGate.value = match;
+          }
+        }
       }
 
       _initialSupervisorValue = _supervisorCtrl.text.trim();
@@ -897,8 +942,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                     padding: EdgeInsets.all(14.w),
                     decoration: BoxDecoration(
                       color: allDone
-                          ? _C.green.withValues(alpha: 0.1)
-                          : Colors.orange.withValues(alpha: 0.1),
+                          ? _C.green.withOpacity(0.1)
+                          : Colors.orange.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12.r),
                       border: Border.all(
                         color: allDone ? _C.green : Colors.orange,
@@ -1090,8 +1135,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                                   Positioned.fill(
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.45,
+                                        color: Colors.black.withOpacity(
+                                          0.45,
                                         ),
                                         borderRadius: BorderRadius.circular(
                                           8.r,
@@ -1156,7 +1201,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                     border: Border.all(color: _C.border),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black.withOpacity(0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -1202,7 +1247,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                                 vertical: 6.h,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.1),
+                                color: Colors.red.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8.r),
                               ),
                               child: Text(
@@ -1224,7 +1269,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                           decoration: BoxDecoration(
                             color: const Color(0xFFF9FAFB),
                             border: Border.all(
-                              color: _C.primary.withValues(alpha: 0.3),
+                              color: _C.primary.withOpacity(0.3),
                               width: 1.5,
                             ),
                             borderRadius: BorderRadius.circular(12.r),
@@ -1238,7 +1283,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                                     style: GoogleFonts.dmSans(
                                       fontSize: 24.sp,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.grey.withValues(alpha: 0.3),
+                                      color: Colors.grey.withOpacity(0.3),
                                     ),
                                   ),
                                 ),
@@ -1808,10 +1853,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                           return Container(
                             padding: EdgeInsets.all(12.w),
                             decoration: BoxDecoration(
-                              color: overallColor.withValues(alpha: 0.07),
+                              color: overallColor.withOpacity(0.07),
                               borderRadius: BorderRadius.circular(12.r),
                               border: Border.all(
-                                color: overallColor.withValues(alpha: 0.3),
+                                color: overallColor.withOpacity(0.3),
                               ),
                             ),
                             child: Row(
@@ -1953,7 +1998,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                     color: _C.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
+                        color: Colors.black.withOpacity(0.05),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),
@@ -2082,9 +2127,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         borderRadius: BorderRadius.circular(12.r),
         border: Border.all(
           color: status == 'pass'
-              ? _C.green.withValues(alpha: 0.4)
+              ? _C.green.withOpacity(0.4)
               : status == 'fail'
-              ? _C.red.withValues(alpha: 0.4)
+              ? _C.red.withOpacity(0.4)
               : _C.border,
         ),
       ),
@@ -2162,10 +2207,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                             vertical: 4.h,
                           ),
                           decoration: BoxDecoration(
-                            color: _C.primary.withValues(alpha: 0.1),
+                            color: _C.primary.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(16.r),
                             border: Border.all(
-                              color: _C.primary.withValues(alpha: 0.3),
+                              color: _C.primary.withOpacity(0.3),
                             ),
                           ),
                           child: Row(
@@ -2391,7 +2436,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                         child: Container(
                           margin: EdgeInsets.only(right: 8.w),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
+                            color: Colors.black.withOpacity(0.45),
                             borderRadius: BorderRadius.circular(8.r),
                           ),
                           child: Center(
@@ -3561,7 +3606,7 @@ class _SeatPainter extends CustomPainter {
     );
 
     final armPaint = Paint()
-      ..color = color.withValues(alpha: 0.85)
+      ..color = color.withOpacity(0.85)
       ..style = PaintingStyle.fill;
     canvas.drawRRect(
       RRect.fromRectAndRadius(

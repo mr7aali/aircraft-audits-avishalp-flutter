@@ -609,7 +609,7 @@ class _ProfileTabState extends State<ProfileTab> {
         border: Border.all(color: const Color(0xFFE7EDF6)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -812,7 +812,7 @@ class _ProfileTabState extends State<ProfileTab> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -878,7 +878,7 @@ class _ProfileTabState extends State<ProfileTab> {
                     onPressed: _isSaving ? null : _cancelEditing,
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(
-                        color: AppColors.mainAppColor.withValues(alpha: 0.18),
+                        color: AppColors.mainAppColor.withOpacity(0.18),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -993,7 +993,7 @@ class _ProfileTabState extends State<ProfileTab> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -1065,7 +1065,7 @@ class _ProfileTabState extends State<ProfileTab> {
             fillColor: const Color(0xFFF8FAFC),
             hintText: 'Enter $label',
             hintStyle: GoogleFonts.dmSans(
-              color: AppColors.from_heading.withValues(alpha: 0.75),
+              color: AppColors.from_heading.withOpacity(0.75),
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
@@ -1074,7 +1074,7 @@ class _ProfileTabState extends State<ProfileTab> {
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
               borderSide: BorderSide(
-                color: AppColors.border.withValues(alpha: 0.65),
+                color: AppColors.border.withOpacity(0.65),
               ),
             ),
             focusedBorder: OutlineInputBorder(
@@ -1156,7 +1156,7 @@ class _ProfileTabState extends State<ProfileTab> {
         shape: BoxShape.circle,
         color: const Color(0xFFE8EEF9),
         border: Border.all(
-          color: AppColors.mainAppColor.withValues(alpha: 0.10),
+          color: AppColors.mainAppColor.withOpacity(0.10),
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1211,7 +1211,7 @@ class _InfoChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -1274,7 +1274,7 @@ class _ActionTile extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
+          color: color.withOpacity(0.10),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(icon, color: color, size: 20),
@@ -1324,7 +1324,7 @@ class _BottomSheetAction extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+          color: color.withOpacity(0.08),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(icon, color: color, size: 20),

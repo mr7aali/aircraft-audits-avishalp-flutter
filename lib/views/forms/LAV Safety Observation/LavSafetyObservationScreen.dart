@@ -597,9 +597,9 @@ class _LavSafetyObservationScreenState
       margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: scoreColor.withValues(alpha: 0.08),
+        color: scoreColor.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: scoreColor.withValues(alpha: 0.3)),
+        border: Border.all(color: scoreColor.withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -922,7 +922,7 @@ class _LavSafetyObservationScreenState
       decoration: BoxDecoration(
         color: _Colors.highlightBg,
         borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: _Colors.primary.withValues(alpha: 0.15)),
+        border: Border.all(color: _Colors.primary.withOpacity(0.15)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1105,7 +1105,7 @@ class _LavSafetyObservationScreenState
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(999.r),
       ),
       child: Text(
@@ -1123,7 +1123,7 @@ class _LavSafetyObservationScreenState
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.1),
+        color: status.color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8.r),
       ),
       child: Text(

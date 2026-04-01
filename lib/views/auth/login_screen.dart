@@ -338,7 +338,7 @@ class _LoginScreenState extends State<LoginScreen>
         borderRadius: BorderRadius.circular(28.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
+            color: Colors.black.withOpacity(0.07),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -402,7 +402,7 @@ class _LoginScreenState extends State<LoginScreen>
           height: 54.h,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: _isSubmitting ? _C.blue.withValues(alpha: 0.75) : _C.blue,
+            color: _isSubmitting ? _C.blue.withOpacity(0.75) : _C.blue,
             borderRadius: BorderRadius.circular(30.r),
           ),
           clipBehavior: Clip.hardEdge,
@@ -416,7 +416,7 @@ class _LoginScreenState extends State<LoginScreen>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withValues(alpha: 0.1),
+                        Colors.white.withOpacity(0.1),
                         Colors.transparent,
                       ],
                     ),
@@ -436,7 +436,7 @@ class _LoginScreenState extends State<LoginScreen>
                         gradient: LinearGradient(
                           colors: [
                             Colors.transparent,
-                            Colors.white.withValues(alpha: 0.2),
+                            Colors.white.withOpacity(0.2),
                             Colors.transparent,
                           ],
                         ),
@@ -477,7 +477,7 @@ class _LoginScreenState extends State<LoginScreen>
         width: 134.w,
         height: 5.h,
         decoration: BoxDecoration(
-          color: _C.ink.withValues(alpha: 0.15),
+          color: _C.ink.withOpacity(0.15),
           borderRadius: BorderRadius.circular(3.r),
         ),
       ),

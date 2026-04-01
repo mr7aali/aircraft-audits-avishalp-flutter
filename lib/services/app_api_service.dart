@@ -33,10 +33,10 @@ class AppApiService {
     }
 
     final defaultHost = kReleaseMode
-        ? 'https://sensitive-united-contracts-governor.trycloudflare.com/api'
+        ? 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api'
         : !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-        ? 'https://sensitive-united-contracts-governor.trycloudflare.com/api'
-        : 'https://sensitive-united-contracts-governor.trycloudflare.com/api';
+        ? 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api'
+        : 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api';
     return _normalizeBaseUrl(defaultHost);
   }
 

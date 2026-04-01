@@ -656,7 +656,14 @@ class CabinQualityController extends GetxController {
 // SCREEN
 // ─────────────────────────────────────────────
 class CabinQualityAuditScreenN extends StatefulWidget {
-  const CabinQualityAuditScreenN({super.key});
+  final String? initialShipNumber;
+  final String? initialGateNumber;
+
+  const CabinQualityAuditScreenN({
+    super.key,
+    this.initialShipNumber,
+    this.initialGateNumber,
+  });
 
   @override
   State<CabinQualityAuditScreenN> createState() =>
@@ -821,6 +828,50 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       if (_ctrl.aircraftOptions.isNotEmpty &&
           !_ctrl.aircraftOptions.contains(_ctrl.selectedAircraft.value)) {
         _ctrl.selectedAircraft.value = _ctrl.aircraftOptions.first;
+      }
+
+      // Populate from API if available
+      if (widget.initialShipNumber != null &&
+          widget.initialShipNumber!.isNotEmpty) {
+        final ship = widget.initialShipNumber!.trim().toUpperCase();
+        if (_ctrl.shipOptions.contains(ship)) {
+          _ctrl.shipNumber.value = ship;
+          final aircraftName = _fleetAircraftNamesByShip[ship];
+          if (aircraftName != null &&
+              _ctrl.aircraftOptions.contains(aircraftName)) {
+            _ctrl.selectedAircraft.value = aircraftName;
+          }
+        }
+      }
+
+      if (widget.initialGateNumber != null &&
+          widget.initialGateNumber!.isNotEmpty) {
+        final gText = widget.initialGateNumber!.trim().toLowerCase();
+
+        // Skip if the provided gate is just a placeholder
+        if (gText != "—" && gText != "n/a" && gText != "unknown") {
+          // Normalization: remove non-alphanumeric, then remove leading zeros from numbers
+          String normalize(String s) {
+            return s
+                .toLowerCase()
+                .replaceAll(RegExp(r'[^a-z0-9]'), '')
+                .replaceAll(RegExp(r'0+([1-9])'), r'$1'); // e.g. "a01" -> "a1"
+          }
+
+          final normalizedInput = normalize(gText);
+
+          final match = _ctrl.gateOptions.firstWhereOrNull((opt) {
+            if (opt.toLowerCase().contains('select')) return false;
+            final normalizedOpt = normalize(opt);
+            // Check for mutual containment (e.g. "a1" in "gatea1" or vice-versa)
+            return normalizedOpt.contains(normalizedInput) ||
+                normalizedInput.contains(normalizedOpt);
+          });
+
+          if (match != null) {
+            _ctrl.selectedGate.value = match;
+          }
+        }
       }
 
       if (_session.fullName.isNotEmpty) {
@@ -1067,7 +1118,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
               borderRadius: BorderRadius.vertical(top: Radius.circular(28.r)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
+                  color: Colors.black.withOpacity(0.12),
                   blurRadius: 24,
                   offset: const Offset(0, -8),
                 ),
@@ -1092,7 +1143,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                         width: 46.w,
                         height: 46.h,
                         decoration: BoxDecoration(
-                          color: _C.primary.withValues(alpha: 0.10),
+                          color: _C.primary.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(14.r),
                         ),
                         child: Icon(
@@ -1224,12 +1275,12 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                               style: OutlinedButton.styleFrom(
                                 padding: EdgeInsets.symmetric(vertical: 14.h),
                                 side: BorderSide(
-                                  color: _C.red.withValues(alpha: 0.35),
+                                  color: _C.red.withOpacity(0.35),
                                 ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16.r),
                                 ),
-                                backgroundColor: _C.red.withValues(alpha: 0.03),
+                                backgroundColor: _C.red.withOpacity(0.03),
                               ),
                             ),
                           ),
@@ -1675,7 +1726,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                           margin: EdgeInsets.only(bottom: 12.h),
                           padding: EdgeInsets.all(12.w),
                           decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.1),
+                            color: Colors.orange.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8.r),
                             border: Border.all(color: Colors.orange),
                           ),
@@ -1954,8 +2005,8 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                                     Positioned.fill(
                                       child: Container(
                                         decoration: BoxDecoration(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.45,
+                                          color: Colors.black.withOpacity(
+                                            0.45,
                                           ),
                                           borderRadius: BorderRadius.circular(
                                             8.r,
@@ -2443,7 +2494,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                   width: 80.w,
                   height: 80.w,
                   decoration: BoxDecoration(
-                    color: _C.green.withValues(alpha: 0.1),
+                    color: _C.green.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -3407,9 +3458,9 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
     final overallStatus = card.computedStatus;
 
     final borderColor = overallStatus == 'pass'
-        ? _C.green.withValues(alpha: 0.45)
+        ? _C.green.withOpacity(0.45)
         : overallStatus == 'fail'
-        ? _C.red.withValues(alpha: 0.45)
+        ? _C.red.withOpacity(0.45)
         : _C.border;
 
     return Container(
@@ -3434,7 +3485,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                   width: 36.w,
                   height: 36.h,
                   decoration: BoxDecoration(
-                    color: _C.primary.withValues(alpha: 0.1),
+                    color: _C.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10.r),
                   ),
                   child: Icon(
@@ -3532,7 +3583,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                       borderRadius: BorderRadius.circular(25.r),
                       border: Border.all(
                         color: imageUploaded
-                            ? _C.green.withValues(alpha: 0.5)
+                            ? _C.green.withOpacity(0.5)
                             : _C.border,
                         width: 1.5,
                       ),
@@ -3592,7 +3643,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
                                 height: 64.h,
                                 margin: EdgeInsets.only(right: 8.w),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.45),
+                                  color: Colors.black.withOpacity(0.45),
                                   borderRadius: BorderRadius.circular(8.r),
                                 ),
                                 child: Center(
@@ -3667,13 +3718,13 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
               padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
               decoration: BoxDecoration(
                 color: imageUploaded
-                    ? _C.green.withValues(alpha: 0.08)
+                    ? _C.green.withOpacity(0.08)
                     : _C.warnBg,
                 borderRadius: BorderRadius.circular(10.r),
                 border: Border.all(
                   color: imageUploaded
-                      ? _C.green.withValues(alpha: 0.28)
-                      : _C.warnBorder.withValues(alpha: 0.5),
+                      ? _C.green.withOpacity(0.28)
+                      : _C.warnBorder.withOpacity(0.5),
                 ),
               ),
               child: Row(
@@ -3745,7 +3796,7 @@ class _SeatPainter extends CustomPainter {
       paint,
     );
     final armPaint = Paint()
-      ..color = color.withValues(alpha: 0.85)
+      ..color = color.withOpacity(0.85)
       ..style = PaintingStyle.fill;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
