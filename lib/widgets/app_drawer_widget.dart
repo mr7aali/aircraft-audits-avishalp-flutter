@@ -2,6 +2,7 @@ import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditLis
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/CabinSecurityTrainingScreen.dart';
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:avislap/services/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -38,11 +39,16 @@ class AppDrawerController extends GetxController {
 
   List<DrawerMenuItem> get menuItems {
     final formSubItems = <DrawerSubItem>[
-      const DrawerSubItem(title: 'Cabin Quality Audit'),
-      const DrawerSubItem(title: 'Cabin Security Search Training'),
-      if (!_session.isEmployeeRole)
+      if (_session.hasPermission(AppPermissionCodes.cabinQualityAudit))
+        const DrawerSubItem(title: 'Cabin Quality Audit'),
+      if (_session.hasPermission(
+        AppPermissionCodes.cabinSecuritySearchTraining,
+      ))
+        const DrawerSubItem(title: 'Cabin Security Search Training'),
+      if (_session.hasPermission(AppPermissionCodes.hiddenObjectAudit))
         const DrawerSubItem(title: 'Hidden Object Audit'),
-      const DrawerSubItem(title: 'LAV Safety Observation'),
+      if (_session.hasPermission(AppPermissionCodes.lavSafetyObservation))
+        const DrawerSubItem(title: 'LAV Safety Observation'),
     ];
 
     return const [
@@ -63,11 +69,12 @@ class AppDrawerController extends GetxController {
           ),
         ]
         .followedBy([
-          DrawerMenuItem(
-            title: 'Forms',
-            icon: Icons.insert_drive_file_outlined,
-            subItems: formSubItems,
-          ),
+          if (formSubItems.isNotEmpty)
+            DrawerMenuItem(
+              title: 'Forms',
+              icon: Icons.insert_drive_file_outlined,
+              subItems: formSubItems,
+            ),
           const DrawerMenuItem(
             title: 'Inventory',
             icon: Icons.grid_view_outlined,
@@ -343,9 +350,7 @@ class AppDrawerWidget extends StatelessWidget {
                     style: GoogleFonts.dmSans(
                       fontSize: 14.sp,
                       fontWeight: active ? FontWeight.w600 : FontWeight.w600,
-                      color: Colors.white.withOpacity(
-                        active ? 1.0 : 0.82,
-                      ),
+                      color: Colors.white.withOpacity(active ? 1.0 : 0.82),
                     ),
                   ),
                 ),

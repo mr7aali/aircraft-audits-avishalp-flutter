@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/app_api_service.dart';
 import '../../services/session_service.dart';
 import 'login_screen.dart';
 
@@ -42,6 +43,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _exitScale;
 
   final SessionService _sessionService = Get.find<SessionService>();
+  final AppApiService _api = Get.find<AppApiService>();
 
   @override
   void initState() {
@@ -52,8 +54,10 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 1000),
     );
     _logoOpacity = Tween<double>(begin: 0, end: 1).animate(_logoCtrl);
-    _logoSlide = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutExpo));
+    _logoSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeOutExpo));
 
     _bar1Ctrl = AnimationController(
       vsync: this,
@@ -67,22 +71,27 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _bar1Scale = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _bar1Ctrl, curve: Curves.easeOutExpo),
-    );
-    _bar2Scale = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _bar2Ctrl, curve: Curves.easeOutExpo),
-    );
-    _bar3Scale = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _bar3Ctrl, curve: Curves.easeOutExpo),
-    );
+    _bar1Scale = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _bar1Ctrl, curve: Curves.easeOutExpo));
+    _bar2Scale = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _bar2Ctrl, curve: Curves.easeOutExpo));
+    _bar3Scale = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _bar3Ctrl, curve: Curves.easeOutExpo));
 
     _wordCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _wordSlide = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _wordCtrl, curve: Curves.easeOutExpo));
+    _wordSlide = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _wordCtrl, curve: Curves.easeOutExpo));
 
     _exitCtrl = AnimationController(
       vsync: this,
@@ -114,7 +123,26 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (_sessionService.isLoggedIn) {
       if (_sessionService.activeStationId.isNotEmpty) {
-        Get.offAll(() => const DashboardScreen());
+        var hasStationSession = true;
+        try {
+          final activeStation = await _api.getActiveStation();
+          if (activeStation != null) {
+            _sessionService.saveActiveStation(activeStation);
+          } else {
+            _sessionService.saveActiveStation(null);
+            hasStationSession = false;
+          }
+        } catch (_) {
+          // Keep the locally persisted station if refresh is temporarily unavailable.
+        }
+
+        if (hasStationSession) {
+          Get.offAll(() => const DashboardScreen());
+        } else {
+          Get.offAll(
+            () => StationSelectionScreen(userName: _sessionService.firstName),
+          );
+        }
         return;
       }
 
