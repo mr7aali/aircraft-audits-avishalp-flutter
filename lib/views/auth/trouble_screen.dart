@@ -73,7 +73,7 @@ class _TroubleScreenState extends State<TroubleScreen> {
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black
-                                    .withValues(alpha: 0.08),
+                                    .withOpacity(0.08),
                                 blurRadius: 24,
                                 offset: const Offset(0, 8),
                               ),
@@ -148,7 +148,7 @@ class _TroubleScreenState extends State<TroubleScreen> {
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
               color: selected
-                  ? _C.blue.withValues(alpha: 0.05)
+                  ? _C.blue.withOpacity(0.05)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12.r),
             ),
@@ -226,7 +226,7 @@ class _TroubleScreenState extends State<TroubleScreen> {
           borderRadius: BorderRadius.circular(30.r),
           boxShadow: [
             BoxShadow(
-              color: _C.blue.withValues(alpha: 0.3),
+              color: _C.blue.withOpacity(0.3),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -254,7 +254,7 @@ class _TroubleScreenState extends State<TroubleScreen> {
           width: 134.w,
           height: 5.h,
           decoration: BoxDecoration(
-            color: _C.ink.withValues(alpha: 0.15),
+            color: _C.ink.withOpacity(0.15),
             borderRadius: BorderRadius.circular(3.r),
           ),
         ),

@@ -686,9 +686,9 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
         padding: EdgeInsets.all(16.w),
         decoration: BoxDecoration(
-          color: scoreColor.withValues(alpha: 0.08),
+          color: scoreColor.withOpacity(0.08),
           borderRadius: BorderRadius.circular(16.r),
-          border: Border.all(color: scoreColor.withValues(alpha: 0.3)),
+          border: Border.all(color: scoreColor.withOpacity(0.3)),
         ),
         child: Row(
           children: [
@@ -965,7 +965,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                                     Container(
                                       height: 5.h,
                                       width: constraints.maxWidth,
-                                      color: barColor.withValues(alpha: 0.15),
+                                      color: barColor.withOpacity(0.15),
                                     ),
                                     Container(
                                       height: 5.h,
@@ -1107,7 +1107,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                           vertical: 4.h,
                         ),
                         decoration: BoxDecoration(
-                          color: _Colors.primary.withValues(alpha: 0.10),
+                          color: _Colors.primary.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(999.r),
                         ),
                         child: Text(
@@ -1363,10 +1363,10 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.12),
+        color: status.color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(8.r),
         border: Border.all(
-          color: status.color.withValues(alpha: 0.4),
+          color: status.color.withOpacity(0.4),
           width: 1,
         ),
       ),
@@ -1385,7 +1385,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.1),
+        color: status.color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6.r),
       ),
       child: Text(

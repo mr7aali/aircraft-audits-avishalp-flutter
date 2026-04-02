@@ -19,7 +19,14 @@ import '../../../services/session_service.dart';
 import 'LavSafetyObservationScreen.dart';
 
 class LAVSafetyScreen extends StatefulWidget {
-  const LAVSafetyScreen({super.key});
+  final String? initialShipNumber;
+  final String? initialGateNumber;
+
+  const LAVSafetyScreen({
+    super.key,
+    this.initialShipNumber,
+    this.initialGateNumber,
+  });
 
   @override
   State<LAVSafetyScreen> createState() => _LAVSafetyScreenState();
@@ -142,6 +149,42 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
           (gate) => (gate['gateCode'] as String?) ?? 'Unknown Gate',
         ),
       ];
+
+      // Auto-populate initial values
+      if (widget.initialShipNumber != null &&
+          widget.initialShipNumber!.isNotEmpty) {
+        _shipCtrl.text = widget.initialShipNumber!.trim().toUpperCase();
+      }
+
+      if (widget.initialGateNumber != null &&
+          widget.initialGateNumber!.isNotEmpty) {
+        final gText = widget.initialGateNumber!.trim().toLowerCase();
+
+        // Skip if the provided gate is just a placeholder
+        if (gText != "—" && gText != "n/a" && gText != "unknown") {
+          // Normalization: remove non-alphanumeric, then remove leading zeros from numbers
+          String normalize(String s) {
+            return s
+                .toLowerCase()
+                .replaceAll(RegExp(r'[^a-z0-9]'), '')
+                .replaceAll(RegExp(r'0+([1-9])'), r'$1'); // e.g. "a01" -> "a1"
+          }
+
+          final normalizedInput = normalize(gText);
+
+          final match = _gateOptions.firstWhereOrNull((opt) {
+            if (opt.toLowerCase().contains('select')) return false;
+            final normalizedOpt = normalize(opt);
+            // Check for mutual containment (e.g. "a1" in "gatea1" or vice-versa)
+            return normalizedOpt.contains(normalizedInput) ||
+                normalizedInput.contains(normalizedOpt);
+          });
+
+          if (match != null) {
+            _selectedGate = match;
+          }
+        }
+      }
     } catch (error) {
       final message = error is ApiException
           ? error.message
@@ -661,7 +704,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                             Positioned.fill(
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.45),
+                                  color: Colors.black.withOpacity(0.45),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Center(
@@ -724,7 +767,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                     border: Border.all(color: AppColors.border),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black.withOpacity(0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -770,7 +813,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.1),
+                                color: Colors.red.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Text(
@@ -792,8 +835,8 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFF9FAFB),
                             border: Border.all(
-                              color: AppColors.mainAppColor.withValues(
-                                alpha: 0.3,
+                              color: AppColors.mainAppColor.withOpacity(
+                                0.3,
                               ),
                               width: 1.5,
                             ),
@@ -808,7 +851,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                                     style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.grey.withValues(alpha: 0.3),
+                                      color: Colors.grey.withOpacity(0.3),
                                     ),
                                   ),
                                 ),
@@ -930,7 +973,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                         Positioned.fill(
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.45),
+                              color: Colors.black.withOpacity(0.45),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Center(
@@ -1001,7 +1044,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
           padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
             color: isSelected
-                ? color.withValues(alpha: 0.12)
+                ? color.withOpacity(0.12)
                 : const Color(0xFFF9FAFB),
             borderRadius: BorderRadius.circular(_inputRadius),
             border: Border.all(
@@ -1094,7 +1137,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1126,7 +1169,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(
-            color: AppColors.from_heading.withValues(alpha: 0.8),
+            color: AppColors.from_heading.withOpacity(0.8),
           ),
           filled: true,
           fillColor: const Color(0xFFF9FAFB),
@@ -1174,7 +1217,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(
-                color: AppColors.from_heading.withValues(alpha: 0.8),
+                color: AppColors.from_heading.withOpacity(0.8),
               ),
               filled: true,
               fillColor: const Color(0xFFF9FAFB),

@@ -68,7 +68,7 @@ class NewSearchSheet extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20.r),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha:0.07), blurRadius: 24, offset: const Offset(0,4))],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.07), blurRadius: 24, offset: const Offset(0,4))],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,9 +189,9 @@ class NewSearchSheet extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 12.h),
         decoration: BoxDecoration(
-          color: selected ? _C.primary.withValues(alpha: 0.08) : _C.inputBg,
+          color: selected ? _C.primary.withOpacity(0.08) : _C.inputBg,
           borderRadius: BorderRadius.circular(30.r),
-          border: Border.all(color: selected ? _C.primary.withValues(alpha: 0.5) : _C.border, width: selected ? 1.5 : 1),
+          border: Border.all(color: selected ? _C.primary.withOpacity(0.5) : _C.border, width: selected ? 1.5 : 1),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, size: 16.sp, color: selected ? _C.primary : _C.grey),

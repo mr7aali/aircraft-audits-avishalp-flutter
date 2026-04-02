@@ -99,7 +99,7 @@ class _ParallaxHeroWidgetState extends State<ParallaxHeroWidget>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.30),
+                  color: Colors.white.withOpacity(0.30),
                   width: 1.5,
                 ),
               ),
@@ -120,7 +120,7 @@ class _ParallaxHeroWidgetState extends State<ParallaxHeroWidget>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.20),
+                        color: Colors.white.withOpacity(0.20),
                         width: 1.5),
                   ),
                 ),
@@ -142,7 +142,7 @@ class _ParallaxHeroWidgetState extends State<ParallaxHeroWidget>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.13),
+                        color: Colors.white.withOpacity(0.13),
                         width: 1.5),
                   ),
                 ),
@@ -210,7 +210,7 @@ class _ParallaxHeroWidgetState extends State<ParallaxHeroWidget>
         width: 4.w,
         height: h,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: opacity),
+          color: Colors.white.withOpacity(opacity),
           borderRadius: BorderRadius.circular(2.r),
         ),
       );

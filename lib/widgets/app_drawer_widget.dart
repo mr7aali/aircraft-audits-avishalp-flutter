@@ -187,7 +187,7 @@ class AppDrawerWidget extends StatelessWidget {
     width: 3.5.w,
     height: h,
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: opacity),
+      color: Colors.white.withOpacity(opacity),
       borderRadius: BorderRadius.circular(2.r),
     ),
   );
@@ -246,7 +246,7 @@ class AppDrawerWidget extends StatelessWidget {
                           ? Icons.keyboard_arrow_down_rounded
                           : Icons.chevron_right_rounded,
                       size: 21.sp,
-                      color: Colors.white.withValues(alpha: 0.8),
+                      color: Colors.white.withOpacity(0.8),
                     ),
                 ],
               ),
@@ -284,7 +284,7 @@ class AppDrawerWidget extends StatelessWidget {
                 itemCount: subs.length,
                 itemHeight: itemH,
                 bracketWidth: bracketW,
-                color: Colors.white.withValues(alpha: 0.45),
+                color: Colors.white.withOpacity(0.45),
                 strokeWidth: 1.5,
               ),
             ),
@@ -333,7 +333,7 @@ class AppDrawerWidget extends StatelessWidget {
                   Icon(
                     sub.icon,
                     size: 16.sp,
-                    color: Colors.white.withValues(alpha: active ? 1.0 : 0.72),
+                    color: Colors.white.withOpacity(active ? 1.0 : 0.72),
                   ),
                   SizedBox(width: 9.w),
                 ],
@@ -343,8 +343,8 @@ class AppDrawerWidget extends StatelessWidget {
                     style: GoogleFonts.dmSans(
                       fontSize: 14.sp,
                       fontWeight: active ? FontWeight.w600 : FontWeight.w600,
-                      color: Colors.white.withValues(
-                        alpha: active ? 1.0 : 0.82,
+                      color: Colors.white.withOpacity(
+                        active ? 1.0 : 0.82,
                       ),
                     ),
                   ),
