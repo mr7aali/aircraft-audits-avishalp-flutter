@@ -5,6 +5,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
+import '../config/app_env.dart';
 import 'api_exception.dart';
 
 class CloudinarySignedUploadPayload {
@@ -65,11 +66,9 @@ class CloudinaryUploadService {
 
   final Dio _dio;
 
-  static String get _cloudName =>
-      const String.fromEnvironment('CLOUDINARY_CLOUD_NAME');
+  static String get _cloudName => AppEnv.cloudinaryCloudName;
 
-  static String get _unsignedPreset =>
-      const String.fromEnvironment('CLOUDINARY_UNSIGNED_PRESET');
+  static String get _unsignedPreset => AppEnv.cloudinaryUnsignedPreset;
 
   bool get hasUnsignedUploadConfig =>
       _cloudName.trim().isNotEmpty && _unsignedPreset.trim().isNotEmpty;
@@ -137,8 +136,7 @@ class CloudinaryUploadService {
       originalFileName: originalFileName,
       mimeType: mimeType,
       format:
-          data['format']?.toString().trim() ??
-          _inferFormat(uploadFile.path),
+          data['format']?.toString().trim() ?? _inferFormat(uploadFile.path),
       resourceType: data['resource_type']?.toString().trim() ?? 'image',
     );
   }
@@ -181,7 +179,7 @@ class CloudinaryUploadService {
 
     if (_cloudName.trim().isEmpty || _unsignedPreset.trim().isEmpty) {
       throw const ApiException(
-        'Cloudinary upload is not configured. Set CLOUDINARY_CLOUD_NAME and CLOUDINARY_UNSIGNED_PRESET with --dart-define.',
+        'Cloudinary upload is not configured. Set CLOUDINARY_CLOUD_NAME and CLOUDINARY_UNSIGNED_PRESET in .env or with --dart-define.',
       );
     }
   }
