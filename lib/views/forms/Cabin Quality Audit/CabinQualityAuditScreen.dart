@@ -74,12 +74,22 @@ class CheckItemResult {
 class AuditedAreaResult {
   final String areaId;
   final String sectionLabel;
+  final String? areaGroup;
   final List<CheckItemResult> checkItems;
+  final double? weightedScorePercent;
+  final double? earnedPoints;
+  final double? possiblePoints;
+  final double? areaWeight;
 
   AuditedAreaResult({
     required this.areaId,
     required this.sectionLabel,
     required this.checkItems,
+    this.areaGroup,
+    this.weightedScorePercent,
+    this.earnedPoints,
+    this.possiblePoints,
+    this.areaWeight,
   });
 
   AuditStatus get overallStatus {
@@ -99,6 +109,9 @@ class AuditedAreaResult {
   int get naCount => checkItems.where((c) => c.status == AuditStatus.na).length;
 
   double get scorePercent {
+    if (weightedScorePercent != null) {
+      return weightedScorePercent!;
+    }
     final applicable = checkItems
         .where((c) => c.status != AuditStatus.na)
         .toList();
@@ -129,6 +142,9 @@ class CabinAuditDetailModel {
   final List<AuditedAreaResult> auditedAreas;
   final List<String> pictures;
   final String? notes;
+  final double? weightedScorePercent;
+  final double? earnedPoints;
+  final double? possiblePoints;
 
   CabinAuditDetailModel({
     required this.auditorName,
@@ -143,6 +159,9 @@ class CabinAuditDetailModel {
     required this.auditedAreas,
     required this.pictures,
     this.notes,
+    this.weightedScorePercent,
+    this.earnedPoints,
+    this.possiblePoints,
   });
 
   factory CabinAuditDetailModel.empty() => CabinAuditDetailModel(
@@ -160,6 +179,9 @@ class CabinAuditDetailModel {
   );
 
   double get scorePercent {
+    if (weightedScorePercent != null) {
+      return weightedScorePercent!;
+    }
     int total = 0;
     int passed = 0;
     for (final area in auditedAreas) {
@@ -199,6 +221,18 @@ class _ParsedNotes {
   final String notes;
 }
 
+class _ParsedScoreSummary {
+  const _ParsedScoreSummary({
+    required this.scorePercent,
+    required this.earnedPoints,
+    required this.possiblePoints,
+  });
+
+  final double scorePercent;
+  final double earnedPoints;
+  final double possiblePoints;
+}
+
 class CabinQualityAuditController extends GetxController {
   CabinQualityAuditController({required this.api});
 
@@ -222,6 +256,7 @@ class CabinQualityAuditController extends GetxController {
         otherFindings: response['otherFindings']?.toString(),
         additionalNotes: response['additionalNotes']?.toString(),
       );
+      final parsedScoreSummary = _parseScoreSummary(response['scoreSummary']);
       final detailedResults = _parseDetailedAreas(
         response['detailedResultsJson'],
       );
@@ -258,6 +293,9 @@ class CabinQualityAuditController extends GetxController {
             .map(api.buildFileContentUrl)
             .toList(),
         notes: parsedNotes.notes,
+        weightedScorePercent: parsedScoreSummary?.scorePercent,
+        earnedPoints: parsedScoreSummary?.earnedPoints,
+        possiblePoints: parsedScoreSummary?.possiblePoints,
       );
 
       currentDate.value = auditAt == null
@@ -300,6 +338,11 @@ class CabinQualityAuditController extends GetxController {
           return AuditedAreaResult(
             areaId: entry['areaId']?.toString().trim() ?? '',
             sectionLabel: entry['sectionLabel']?.toString().trim() ?? 'Area',
+            areaGroup: entry['areaGroup']?.toString().trim(),
+            weightedScorePercent: _asDouble(entry['scorePercent']),
+            earnedPoints: _asDouble(entry['earnedPoints']),
+            possiblePoints: _asDouble(entry['possiblePoints']),
+            areaWeight: _asDouble(entry['areaWeight']),
             checkItems: rawItems
                 .map((item) => _asMap(item))
                 .where((item) => item.isNotEmpty)
@@ -330,6 +373,28 @@ class CabinQualityAuditController extends GetxController {
         })
         .where((area) => area.checkItems.isNotEmpty)
         .toList();
+  }
+
+  _ParsedScoreSummary? _parseScoreSummary(dynamic raw) {
+    final data = _asMap(raw);
+    if (data.isEmpty) {
+      return null;
+    }
+
+    final scorePercent = _asDouble(data['scorePercent']);
+    final earnedPoints = _asDouble(data['earnedPoints']);
+    final possiblePoints = _asDouble(data['possiblePoints']);
+    if (scorePercent == null ||
+        earnedPoints == null ||
+        possiblePoints == null) {
+      return null;
+    }
+
+    return _ParsedScoreSummary(
+      scorePercent: scorePercent,
+      earnedPoints: earnedPoints,
+      possiblePoints: possiblePoints,
+    );
   }
 
   AuditedAreaResult _mapFallbackResponseToArea(Map<String, dynamic> item) {
@@ -449,6 +514,13 @@ class CabinQualityAuditController extends GetxController {
     return <String, dynamic>{};
   }
 
+  double? _asDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse(value?.toString() ?? '');
+  }
+
   void previousDate() {}
 
   void nextDate() {}
@@ -492,8 +564,10 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    Get.delete<CabinQualityAuditController>(tag: _controllerTag);
     super.dispose();
+    if (Get.isRegistered<CabinQualityAuditController>(tag: _controllerTag)) {
+      Get.delete<CabinQualityAuditController>(tag: _controllerTag);
+    }
   }
 
   @override
@@ -731,6 +805,17 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                       color: _Colors.textGrey,
                     ),
                   ),
+                  if (d.earnedPoints != null && d.possiblePoints != null) ...[
+                    SizedBox(height: 3.h),
+                    Text(
+                      '${d.earnedPoints!.toStringAsFixed(2)} / ${d.possiblePoints!.toStringAsFixed(2)} weighted pts',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11.sp,
+                        color: _Colors.textGrey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                   if (!isGood) ...[
                     SizedBox(height: 3.h),
                     Text(
@@ -984,6 +1069,17 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
                                   color: barColor,
                                 ),
                               ),
+                              // if (area.earnedPoints != null &&
+                              //     area.possiblePoints != null) ...[
+                              //   SizedBox(height: 2.h),
+                              //   Text(
+                              //     '${area.earnedPoints!.toStringAsFixed(2)} / ${area.possiblePoints!.toStringAsFixed(2)} pts',
+                              //     style: GoogleFonts.poppins(
+                              //       fontSize: 10.sp,
+                              //       color: _Colors.textGrey,
+                              //     ),
+                              //   ),
+                              // ],
                             ],
                           );
                         },
@@ -1365,10 +1461,7 @@ class _CabinQualityAuditScreenState extends State<CabinQualityAuditScreen> {
       decoration: BoxDecoration(
         color: status.color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(
-          color: status.color.withOpacity(0.4),
-          width: 1,
-        ),
+        border: Border.all(color: status.color.withOpacity(0.4), width: 1),
       ),
       child: Text(
         status.label,

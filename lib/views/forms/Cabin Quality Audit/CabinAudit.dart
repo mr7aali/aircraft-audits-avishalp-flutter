@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:signature/signature.dart';
 
+import '../../../data/cabin_quality_scoring.dart';
 import '../../../data/seat_map_config.dart' as seat_map_config;
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
@@ -110,10 +111,12 @@ class AircraftSeatMap {
   final String name;
   final List<SeatSection> sections;
   final bool hasFirstClassArc;
+  final Map<String, double> areaWeights;
   AircraftSeatMap({
     required this.name,
     required this.sections,
     this.hasFirstClassArc = false,
+    this.areaWeights = kDefaultCabinQualityAreaWeights,
   });
 }
 
@@ -233,6 +236,7 @@ class CabinAudit extends GetxController {
         AircraftSeatMap(
           name: value.name,
           hasFirstClassArc: value.hasFirstClassArc,
+          areaWeights: Map<String, double>.from(value.areaWeights),
           sections: value.sections
               .map(
                 (section) => SeatSection(
@@ -281,6 +285,11 @@ class CabinAudit extends GetxController {
 
   AircraftSeatMap get currentAircraftMap =>
       aircraftMaps[selectedAircraft.value] ?? aircraftMaps.values.first;
+
+  Map<String, double> get currentAreaWeights =>
+      currentAircraftMap.areaWeights.isEmpty
+      ? Map<String, double>.from(kDefaultCabinQualityAreaWeights)
+      : Map<String, double>.from(currentAircraftMap.areaWeights);
 
   final RxSet<String> mandatoryAreas = <String>{}.obs;
 
@@ -463,6 +472,47 @@ class CabinAudit extends GetxController {
         return 'Main Cabin';
     }
   }
+
+  String getAreaGroupForSeat(String seatId) {
+    final section = getSectionForSeat(seatId);
+    switch (section) {
+      case 'lav':
+        return 'lav';
+      case 'galley':
+        return 'galley';
+      case 'first_class':
+        return 'first_class';
+      case 'comfort':
+        return 'comfort';
+      case 'main_cabin':
+        return 'main_cabin';
+      default:
+        return 'other';
+    }
+  }
+
+  CabinQualityScoreSummary buildScoreSummary({
+    Iterable<String>? areaIds,
+  }) {
+    final ids = (areaIds ?? auditedSeats.keys).toList()..sort();
+    final inputs = ids
+        .map(
+          (areaId) => CabinQualityScoreAreaInput(
+            areaId: areaId,
+            sectionLabel: getSectionLabel(areaId),
+            areaGroup: getAreaGroupForSeat(areaId),
+            itemStatuses: getCheckItemsForSeat(
+              areaId,
+            ).map((item) => getCheckItem(areaId, item)).toList(),
+          ),
+        )
+        .toList();
+
+    return calculateCabinQualityScore(
+      inputs,
+      rawAreaWeights: currentAreaWeights,
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -498,7 +548,8 @@ class CabinAuditScreen extends StatefulWidget {
 
 class _CabinAuditScreenState extends State<CabinAuditScreen>
     with WidgetsBindingObserver {
-  final _ctrl = Get.put(CabinAudit());
+  late final String _controllerTag;
+  late final CabinAudit _ctrl;
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
   final GetStorage _draftBox = GetStorage();
@@ -618,6 +669,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
   @override
   void initState() {
     super.initState();
+    _controllerTag = 'cabin-quality-audit-${identityHashCode(this)}';
+    _ctrl = Get.put(CabinAudit(), tag: _controllerTag);
     WidgetsBinding.instance.addObserver(this);
     _resetWorkingAuditState();
     _loadFormData();
@@ -643,6 +696,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     _additionalNotesCtrl.dispose();
     signatureController.dispose();
     super.dispose();
+    if (Get.isRegistered<CabinAudit>(tag: _controllerTag)) {
+      Get.delete<CabinAudit>(tag: _controllerTag);
+    }
   }
 
   Future<void> _loadFormData() async {
@@ -660,6 +716,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         _api.getCabinQualityChecklistItems(),
         _api.getAircraftTypes(),
       ]);
+      if (!mounted) {
+        return;
+      }
 
       final gates = List<Map<String, dynamic>>.from(results[0]);
       final cleanTypes = List<Map<String, dynamic>>.from(results[1]);
@@ -1904,6 +1963,53 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                           final overallLabel = hasAnyFail
                               ? 'FAIL'
                               : (passCount > 0 ? 'PASS' : 'NOT CHECKED');
+                          final allAreaIds = {
+                            ..._ctrl.auditedSeats.keys,
+                            id,
+                          }.toList()
+                            ..sort();
+                          final weightedSummary = calculateCabinQualityScore(
+                            allAreaIds
+                                .map(
+                                  (areaId) => CabinQualityScoreAreaInput(
+                                    areaId: areaId,
+                                    sectionLabel: _ctrl.getSectionLabel(areaId),
+                                    areaGroup: _ctrl.getAreaGroupForSeat(areaId),
+                                    itemStatuses: _ctrl
+                                        .getCheckItemsForSeat(areaId)
+                                        .map(
+                                          (item) => areaId == id
+                                              ? itemStatuses[item]!.value
+                                              : _ctrl.getCheckItem(areaId, item),
+                                        )
+                                        .toList(),
+                                  ),
+                                )
+                                .toList(),
+                            rawAreaWeights: _ctrl.currentAreaWeights,
+                          );
+                          final weightedArea = weightedSummary.areas.firstWhere(
+                            (area) => area.areaId == id,
+                            orElse: () => CabinQualityAreaScore(
+                              areaId: id,
+                              sectionLabel: categoryLabel,
+                              areaGroup: _ctrl.getAreaGroupForSeat(id),
+                              configuredGroupWeight:
+                                  _ctrl.currentAreaWeights[
+                                      _ctrl.getAreaGroupForSeat(id)] ??
+                                  0,
+                              groupAreaCount: 0,
+                              areaWeight: 0,
+                              applicableItemCount: 0,
+                              passedItemCount: 0,
+                              failedItemCount: 0,
+                              naItemCount: checkItems.length,
+                              scorePercent: 0,
+                              earnedPoints: 0,
+                              possiblePoints: 0,
+                              status: 'na',
+                            ),
+                          );
 
                           return Container(
                             padding: EdgeInsets.all(12.w),
@@ -1925,13 +2031,13 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                                     color: overallColor,
                                   ),
                                   child: Center(
-                                    child: Text(
-                                      totalChecked == 0
-                                          ? 'N/A'
-                                          : '${scorePercent.toStringAsFixed(0)}%',
-                                      style: GoogleFonts.dmSans(
-                                        fontSize: 13.sp,
-                                        fontWeight: FontWeight.w700,
+                                      child: Text(
+                                        weightedArea.applicableItemCount == 0
+                                            ? 'N/A'
+                                            : '${weightedArea.scorePercent.toStringAsFixed(0)}%',
+                                        style: GoogleFonts.dmSans(
+                                          fontSize: 13.sp,
+                                          fontWeight: FontWeight.w700,
                                         color: Colors.white,
                                       ),
                                     ),
@@ -1957,6 +2063,15 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                                         style: GoogleFonts.dmSans(
                                           fontSize: 11.sp,
                                           color: _C.grey,
+                                        ),
+                                      ),
+                                      SizedBox(height: 3.h),
+                                      Text(
+                                        '${weightedArea.earnedPoints.toStringAsFixed(2)} / ${weightedArea.possiblePoints.toStringAsFixed(2)} pts  •  ${weightedArea.areaWeight.toStringAsFixed(2)} area wt',
+                                        style: GoogleFonts.dmSans(
+                                          fontSize: 10.sp,
+                                          color: _C.grey,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                       if (hasAnyFail) ...[
@@ -2902,11 +3017,73 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     final fileIds = <String>[];
     for (final upload in uploads) {
       final fileId = upload.fileId?.trim() ?? '';
-      if (upload.isCompleted && fileId.isNotEmpty) {
+      if (upload.isCompleted && _isUuidLike(fileId)) {
         fileIds.add(fileId);
       }
     }
     return fileIds;
+  }
+
+  bool _isUuidLike(String value) {
+    return RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+    ).hasMatch(value.trim());
+  }
+
+  List<String> _sanitizeUuidList(Iterable<String> values) {
+    return values
+        .map((value) => value.trim())
+        .where((value) => _isUuidLike(value))
+        .toSet()
+        .toList();
+  }
+
+  Map<String, double> _sanitizeAreaWeightsSnapshot(
+    Map<String, double> rawWeights,
+  ) {
+    const allowedKeys = {
+      'lav',
+      'galley',
+      'main_cabin',
+      'first_class',
+      'comfort',
+      'other',
+    };
+
+    final sanitized = <String, double>{};
+    rawWeights.forEach((key, value) {
+      if (!allowedKeys.contains(key)) {
+        return;
+      }
+      if (value.isNaN || value.isInfinite || value < 0) {
+        return;
+      }
+      sanitized[key] = value;
+    });
+
+    return sanitized;
+  }
+
+  List<String> _sanitizeHashtags(Iterable<String> hashtags) {
+    return hashtags
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty && tag.length <= 50)
+        .toSet()
+        .toList();
+  }
+
+  String? _optionalTrimmedText(
+    String value, {
+    required int maxLength,
+  }) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    if (trimmed.length <= maxLength) {
+      return trimmed;
+    }
+    return trimmed.substring(0, maxLength);
   }
 
   Map<String, dynamic> _serializePendingUpload(PendingUploadFile upload) {
@@ -3269,6 +3446,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
 
     for (final entry in _checklistIdsByLabel.entries) {
       final checklistLabel = entry.key;
+      if (!_isUuidLike(entry.value)) {
+        continue;
+      }
       final matchedEntries = _ctrl.checkItemStatuses.entries.where((
         statusEntry,
       ) {
@@ -3294,7 +3474,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         'response': _responseFromStatuses(
           matchedEntries.map((matched) => matched.value),
         ),
-        'imageFileIds': imageFileIds,
+        if (imageFileIds.isNotEmpty)
+          'imageFileIds': _sanitizeUuidList(imageFileIds),
       });
     }
 
@@ -3309,26 +3490,32 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
 
     for (final areaId in areaIds) {
       final checkItems = _ctrl.getCheckItemsForSeat(areaId);
+      final areaGroup = _ctrl.getAreaGroupForSeat(areaId);
+      final sectionLabel = _ctrl.getSectionLabel(areaId);
       final detailedItems = <Map<String, dynamic>>[];
 
       for (final itemName in checkItems) {
         final key = '$areaId|$itemName';
         final status = _ctrl.getCheckItem(areaId, itemName);
+        final imageFileIds = _sanitizeUuidList(
+          uploadedImageIdsByKey[key] ?? const <String>[],
+        );
+        final hashtags = _sanitizeHashtags(
+          (_ctrl.checkItemTags[key] ?? <String>[].obs),
+        );
 
         detailedItems.add({
           'itemName': itemName,
           'status': status,
-          'imageFileIds': uploadedImageIdsByKey[key] ?? const <String>[],
-          'hashtags': (_ctrl.checkItemTags[key] ?? <String>[].obs)
-              .map((tag) => tag.trim())
-              .where((tag) => tag.isNotEmpty)
-              .toList(),
+          if (imageFileIds.isNotEmpty) 'imageFileIds': imageFileIds,
+          if (hashtags.isNotEmpty) 'hashtags': hashtags,
         });
       }
 
       areaResults.add({
         'areaId': areaId,
-        'sectionLabel': _ctrl.getSectionLabel(areaId),
+        'sectionLabel': sectionLabel,
+        'areaGroup': areaGroup,
         'checkItems': detailedItems,
       });
     }
@@ -3484,10 +3671,28 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
 
     try {
       final signatureFileId = await _uploadSignature();
-      final generalPictureFileIds = _uploadedFileIds(_selectedImages);
+      if (!_isUuidLike(signatureFileId)) {
+        throw const ApiException(
+          'Signature upload did not return a valid file id.',
+        );
+      }
+      final generalPictureFileIds = _sanitizeUuidList(
+        _uploadedFileIds(_selectedImages),
+      );
       final uploadedImageIdsByKey = await _uploadCheckItemImageIds();
       final responses = await _buildChecklistResponses(uploadedImageIdsByKey);
       final areaResults = _buildDetailedAreaResults(uploadedImageIdsByKey);
+      final areaWeightsSnapshot = _sanitizeAreaWeightsSnapshot(
+        _ctrl.currentAreaWeights,
+      );
+      final otherFindings = _optionalTrimmedText(
+        _otherFindingsCtrl.text,
+        maxLength: 3000,
+      );
+      final additionalNotes = _optionalTrimmedText(
+        _buildAdditionalNotes(),
+        maxLength: 3000,
+      );
 
       await _api.createCabinQualityAudit({
         'gateId': gateId,
@@ -3495,11 +3700,14 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         'shipNumber': _shipNumberCtrl.text.trim(),
         'flightNumber': _flightNumberCtrl.text.trim(),
         'responses': responses,
-        'areaResults': areaResults,
+        if (areaResults.isNotEmpty) 'areaResults': areaResults,
+        if (areaWeightsSnapshot.isNotEmpty)
+          'areaWeightsSnapshot': areaWeightsSnapshot,
         'signatureFileId': signatureFileId,
-        'otherFindings': _otherFindingsCtrl.text.trim(),
-        'additionalNotes': _buildAdditionalNotes(),
-        'generalPictureFileIds': generalPictureFileIds,
+        if (otherFindings != null) 'otherFindings': otherFindings,
+        if (additionalNotes != null) 'additionalNotes': additionalNotes,
+        if (generalPictureFileIds.isNotEmpty)
+          'generalPictureFileIds': generalPictureFileIds,
       });
 
       if (Get.isRegistered<CabinQualityAuditListController>()) {
