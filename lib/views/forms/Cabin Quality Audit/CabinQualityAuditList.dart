@@ -1,6 +1,7 @@
 import 'package:avislap/utils/app_colors.dart';
 import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinAudit.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/training_filter.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -173,6 +174,12 @@ class CabinQualityAuditListScreen extends StatefulWidget {
 class _CabinQualityAuditListScreenState
     extends State<CabinQualityAuditListScreen> {
   late final CabinQualityAuditListController controller;
+  final SessionService _session = Get.find<SessionService>();
+
+  bool get _canCreateAudit => _session.hasPermission(
+    AppPermissionCodes.cabinQualityAudit,
+    action: 'write',
+  );
 
   @override
   void initState() {
@@ -273,26 +280,25 @@ class _CabinQualityAuditListScreenState
             ),
           ],
         ),
-
-        // New Audit button
-        GestureDetector(
-          onTap: _handleNewAuditTap,
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: _Colors.newAuditBtn,
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Text(
-              'New Audit',
-              style: GoogleFonts.poppins(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+        if (_canCreateAudit)
+          GestureDetector(
+            onTap: _handleNewAuditTap,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: _Colors.newAuditBtn,
+                borderRadius: BorderRadius.circular(20.r),
+              ),
+              child: Text(
+                'New Audit',
+                style: GoogleFonts.poppins(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }

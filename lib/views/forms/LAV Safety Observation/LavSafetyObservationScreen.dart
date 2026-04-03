@@ -1,5 +1,6 @@
 import 'package:avislap/utils/app_colors.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/training_filter.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -402,8 +403,14 @@ class LavSafetyObservationScreen extends StatefulWidget {
 class _LavSafetyObservationScreenState
     extends State<LavSafetyObservationScreen> {
   late final LavSafetyController controller;
+  final SessionService _session = Get.find<SessionService>();
   final PageController _pageController = PageController();
   final RxInt _currentPage = 0.obs;
+
+  bool get _canCreateObservation => _session.hasPermission(
+    AppPermissionCodes.lavSafetyObservation,
+    action: 'write',
+  );
 
   @override
   void initState() {
@@ -1223,24 +1230,25 @@ class _LavSafetyObservationScreenState
             ),
           ],
         ),
-        GestureDetector(
-          onTap: () => Get.to(() => LAVSafetyScreen()),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: _Colors.newObservationBtn,
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Text(
-              'New Observation',
-              style: GoogleFonts.poppins(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+        if (_canCreateObservation)
+          GestureDetector(
+            onTap: () => Get.to(() => LAVSafetyScreen()),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: _Colors.newObservationBtn,
+                borderRadius: BorderRadius.circular(20.r),
+              ),
+              child: Text(
+                'New Observation',
+                style: GoogleFonts.poppins(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }

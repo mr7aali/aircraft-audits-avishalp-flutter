@@ -294,6 +294,11 @@ class _HiddenObjectAuditListScreenState
   final List<HiddenObjectAuditListItem> _items = <HiddenObjectAuditListItem>[];
   bool _loading = true;
 
+  bool get _canCreateAudit => _session.hasPermission(
+    AppPermissionCodes.hiddenObjectAudit,
+    action: 'write',
+  );
+
   @override
   void initState() {
     super.initState();
@@ -375,12 +380,14 @@ class _HiddenObjectAuditListScreenState
         ),
         iconTheme: const IconThemeData(color: _HOColors.textDark),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: _HOColors.primary,
-        onPressed: () => _openWorkflow(),
-        icon: const Icon(Icons.add),
-        label: const Text('New Audit'),
-      ),
+      floatingActionButton: _canCreateAudit
+          ? FloatingActionButton.extended(
+              backgroundColor: _HOColors.primary,
+              onPressed: () => _openWorkflow(),
+              icon: const Icon(Icons.add),
+              label: const Text('New Audit'),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading

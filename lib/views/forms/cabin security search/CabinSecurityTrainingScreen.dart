@@ -1,4 +1,5 @@
 import 'package:avislap/utils/app_colors.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/cabin_secuirity.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/training_filter.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:intl/intl.dart';
 
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
+import '../../../services/session_service.dart';
 
 class _Colors {
   static const Color primary = Color(0xFF3D5AFE);
@@ -696,8 +698,14 @@ class CabinSecurityScreen extends StatefulWidget {
 
 class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
   late final CabinSecurityController controller;
+  final SessionService _session = Get.find<SessionService>();
   final PageController _pageController = PageController();
   final RxInt _currentPage = 0.obs;
+
+  bool get _canCreateTraining => _session.hasPermission(
+    AppPermissionCodes.cabinSecuritySearchTraining,
+    action: 'write',
+  );
 
   @override
   void initState() {
@@ -818,27 +826,28 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
             ),
           ],
         ),
-        GestureDetector(
-          onTap: () async {
-            await Get.to(() => const CabinQualityAuditScreenN());
-            await controller.loadTrainings();
-          },
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: _Colors.newAuditBtn,
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Text(
-              '+ Conduct New Search',
-              style: GoogleFonts.poppins(
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+        if (_canCreateTraining)
+          GestureDetector(
+            onTap: () async {
+              await Get.to(() => const CabinQualityAuditScreenN());
+              await controller.loadTrainings();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: _Colors.newAuditBtn,
+                borderRadius: BorderRadius.circular(20.r),
+              ),
+              child: Text(
+                '+ Conduct New Search',
+                style: GoogleFonts.poppins(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
