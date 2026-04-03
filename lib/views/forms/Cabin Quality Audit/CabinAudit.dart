@@ -172,7 +172,7 @@ class AmenityRow {
 // ─────────────────────────────────────────────
 class CabinAudit extends GetxController {
   final selectedAircraft = 'Boeing 757-300 (75Y)'.obs;
-  final selectedGate = 'Gate - A'.obs;
+  final selectedGate = 'Please Select One'.obs;
   final selectedCleanType = 'Charter'.obs;
   final supervisorName = ''.obs;
 
@@ -186,6 +186,7 @@ class CabinAudit extends GetxController {
     seat_map_config.defaultAircraftSeatMaps.keys,
   );
   final List<String> gateOptions = [
+    'Please Select One',
     'Gate - A',
     'Gate - B',
     'Gate - C',
@@ -518,10 +519,45 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
   bool _isLoading = true;
   bool _isSubmitting = false;
   bool _didSubmitSuccessfully = false;
+  bool _isGateLocked = false;
   String _initialSupervisorValue = '';
   String _initialGateValue = '';
   String _initialCleanTypeValue = '';
   String _initialAircraftValue = '';
+
+  String _normalizeGateValue(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^gate\s*'), '')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        .replaceAll(RegExp(r'0+([1-9])'), r'$1');
+  }
+
+  String _formatGateLabel(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+    return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+  }
+
+  String? _resolveGateId(String selectedGate) {
+    final direct = _gateIdsByLabel[selectedGate];
+    if (direct != null && direct.isNotEmpty) {
+      return direct;
+    }
+
+    final normalizedSelected = _normalizeGateValue(selectedGate);
+    for (final entry in _gateIdsByLabel.entries) {
+      if (_normalizeGateValue(entry.key) == normalizedSelected &&
+          entry.value.isNotEmpty) {
+        return entry.value;
+      }
+    }
+
+    return null;
+  }
 
   final SignatureController signatureController = SignatureController(
     penStrokeWidth: 3,
@@ -631,7 +667,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       final aircraftTypes = List<Map<String, dynamic>>.from(results[3]);
 
       _gateIdsByLabel.clear();
-      _ctrl.gateOptions.clear();
+      _ctrl.gateOptions
+        ..clear()
+        ..add('Please Select One');
       for (final gate in gates) {
         final gateId = gate['id']?.toString() ?? '';
         final gateCode = gate['gateCode']?.toString().trim() ?? '';
@@ -642,11 +680,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
             ? gateCode
             : 'Gate $gateCode';
         _gateIdsByLabel[label] = gateId;
+        _gateIdsByLabel[gateCode] = gateId;
         _ctrl.gateOptions.add(label);
       }
-      if (_ctrl.gateOptions.isNotEmpty) {
-        _ctrl.selectedGate.value = _ctrl.gateOptions.first;
-      }
+      _ctrl.selectedGate.value = 'Please Select One';
 
       _cleanTypeIdsByLabel.clear();
       _ctrl.cleanTypeOptions.clear();
@@ -707,25 +744,25 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         // Skip if the provided gate is just a placeholder
         if (gText != "—" && gText != "n/a" && gText != "unknown") {
           // Normalization: remove non-alphanumeric, then remove leading zeros from numbers
-          String normalize(String s) {
-            return s
-                .toLowerCase()
-                .replaceAll(RegExp(r'[^a-z0-9]'), '')
-                .replaceAll(RegExp(r'0+([1-9])'), r'$1'); // e.g. "a01" -> "a1"
-          }
-
-          final normalizedInput = normalize(gText);
+          final normalizedInput = _normalizeGateValue(gText);
 
           final match = _ctrl.gateOptions.firstWhereOrNull((opt) {
             if (opt.toLowerCase().contains('select')) return false;
-            final normalizedOpt = normalize(opt);
-            // Check for mutual containment (e.g. "a1" in "gatea1" or vice-versa)
-            return normalizedOpt.contains(normalizedInput) ||
+            final normalizedOpt = _normalizeGateValue(opt);
+            return normalizedOpt == normalizedInput ||
+                normalizedOpt.contains(normalizedInput) ||
                 normalizedInput.contains(normalizedOpt);
           });
 
           if (match != null) {
             _ctrl.selectedGate.value = match;
+            _isGateLocked = true;
+          } else {
+            final fallbackLabel = _formatGateLabel(widget.initialGateNumber!);
+            if (!_ctrl.gateOptions.contains(fallbackLabel)) {
+              _ctrl.gateOptions.insert(1, fallbackLabel);
+            }
+            _ctrl.selectedGate.value = fallbackLabel;
           }
         }
       }
@@ -848,13 +885,21 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                 ),
                 SizedBox(height: 16.h),
                 _label('Gate *'),
-                Obx(
-                  () => _pillDropdown(
-                    value: _ctrl.selectedGate.value,
-                    items: _ctrl.gateOptions,
-                    onChanged: (v) => _ctrl.selectedGate.value = v!,
+                if (_isGateLocked)
+                  Obx(
+                    () => _pillReadOnlyField(
+                      _ctrl.selectedGate.value,
+                      hint: 'Gate from flight',
+                    ),
+                  )
+                else
+                  Obx(
+                    () => _pillDropdown(
+                      value: _ctrl.selectedGate.value,
+                      items: _ctrl.gateOptions,
+                      onChanged: (v) => _ctrl.selectedGate.value = v!,
+                    ),
                   ),
-                ),
                 SizedBox(height: 16.h),
                 _label('Type of Clean *'),
                 Obx(
@@ -883,6 +928,16 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
             Get.snackbar(
               'Incomplete',
               'Please enter the flight number before continuing.',
+              snackPosition: SnackPosition.TOP,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+            );
+            return;
+          }
+          if (_ctrl.selectedGate.value == 'Please Select One') {
+            Get.snackbar(
+              'Incomplete',
+              'Please select the gate before continuing.',
               snackPosition: SnackPosition.TOP,
               backgroundColor: Colors.red,
               colorText: Colors.white,
@@ -2633,8 +2688,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
   Widget _pillTextField({
     required TextEditingController controller,
     required String hint,
+    bool readOnly = false,
   }) => TextField(
     controller: controller,
+    readOnly: readOnly,
     style: _fieldStyle(),
     decoration: InputDecoration(
       hintText: hint,
@@ -2654,6 +2711,32 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         borderRadius: BorderRadius.circular(30.r),
         borderSide: BorderSide(color: _C.primary, width: 1.5),
       ),
+    ),
+  );
+
+  Widget _pillReadOnlyField(
+    String value, {
+    required String hint,
+  }) => Container(
+    width: double.infinity,
+    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+    decoration: BoxDecoration(
+      color: _C.white,
+      borderRadius: BorderRadius.circular(30.r),
+      border: Border.all(color: _C.border),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            value.isEmpty ? hint : value,
+            style: value.isEmpty
+                ? GoogleFonts.dmSans(fontSize: 15.sp, color: _C.grey)
+                : _fieldStyle(),
+          ),
+        ),
+        Icon(Icons.lock_outline_rounded, color: _C.grey, size: 18.sp),
+      ],
     ),
   );
 
@@ -3002,7 +3085,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     }
 
     final draftGate = draft['selectedGate']?.toString().trim() ?? '';
-    if (draftGate.isNotEmpty && _ctrl.gateOptions.contains(draftGate)) {
+    if (!_isGateLocked &&
+        draftGate.isNotEmpty &&
+        _ctrl.gateOptions.contains(draftGate)) {
       _ctrl.selectedGate.value = draftGate;
     }
 
@@ -3348,7 +3433,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       return;
     }
 
-    final gateId = _gateIdsByLabel[_ctrl.selectedGate.value];
+    final gateId = _resolveGateId(_ctrl.selectedGate.value);
     final cleanTypeId = _cleanTypeIdsByLabel[_ctrl.selectedCleanType.value];
     if (gateId == null || gateId.isEmpty) {
       Get.snackbar(
