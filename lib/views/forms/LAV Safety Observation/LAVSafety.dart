@@ -40,6 +40,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   List<Map<String, dynamic>> _gates = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _checklistItems = <Map<String, dynamic>>[];
   List<String> _gateOptions = const ['Please Select One'];
+  bool _isGateLocked = false;
   // ── step: 0 = Job Details, 1 = Checklist, 2 = Notes/Submit
   int _step = 0;
 
@@ -67,6 +68,23 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
 
   static const double _cardRadius = 16;
   static const double _inputRadius = 12;
+
+  String _normalizeGateValue(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^gate\s*'), '')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        .replaceAll(RegExp(r'0+([1-9])'), r'$1');
+  }
+
+  String _formatGateLabel(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+    return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+  }
 
   // ─────────────────────────────────────────────
   static String _formatCurrentDate() {
@@ -163,25 +181,29 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
         // Skip if the provided gate is just a placeholder
         if (gText != "—" && gText != "n/a" && gText != "unknown") {
           // Normalization: remove non-alphanumeric, then remove leading zeros from numbers
-          String normalize(String s) {
-            return s
-                .toLowerCase()
-                .replaceAll(RegExp(r'[^a-z0-9]'), '')
-                .replaceAll(RegExp(r'0+([1-9])'), r'$1'); // e.g. "a01" -> "a1"
-          }
-
-          final normalizedInput = normalize(gText);
+          final normalizedInput = _normalizeGateValue(gText);
 
           final match = _gateOptions.firstWhereOrNull((opt) {
             if (opt.toLowerCase().contains('select')) return false;
-            final normalizedOpt = normalize(opt);
-            // Check for mutual containment (e.g. "a1" in "gatea1" or vice-versa)
-            return normalizedOpt.contains(normalizedInput) ||
+            final normalizedOpt = _normalizeGateValue(opt);
+            return normalizedOpt == normalizedInput ||
+                normalizedOpt.contains(normalizedInput) ||
                 normalizedInput.contains(normalizedOpt);
           });
 
           if (match != null) {
             _selectedGate = match;
+            _isGateLocked = true;
+          } else {
+            final fallbackLabel = _formatGateLabel(widget.initialGateNumber!);
+            if (!_gateOptions.contains(fallbackLabel)) {
+              _gateOptions = [
+                _gateOptions.first,
+                fallbackLabel,
+                ..._gateOptions.skip(1),
+              ];
+            }
+            _selectedGate = fallbackLabel;
           }
         }
       }
@@ -207,8 +229,11 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
     if (_selectedGate == 'Please Select One') {
       return null;
     }
+    final normalizedSelected = _normalizeGateValue(_selectedGate);
     for (final gate in _gates) {
-      if ((gate['gateCode'] as String?) == _selectedGate) {
+      final gateCode = (gate['gateCode'] as String?)?.trim() ?? '';
+      if (gateCode == _selectedGate ||
+          _normalizeGateValue(gateCode) == normalizedSelected) {
         return gate;
       }
     }
@@ -555,20 +580,23 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                 _buildRequiredLabel("Ship"),
                 _buildTextField("Enter Ship Number", controller: _shipCtrl),
                 _buildRequiredLabel("Gate"),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: AppDropdown(
-                    hint: "Please Select One",
-                    items: _gateOptions,
-                    value: _selectedGate,
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-                      setState(() => _selectedGate = value);
-                    },
+                if (_isGateLocked)
+                  _buildLockedField(_selectedGate)
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: AppDropdown(
+                      hint: "Please Select One",
+                      items: _gateOptions,
+                      value: _selectedGate,
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() => _selectedGate = value);
+                      },
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1161,7 +1189,10 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
     );
   }
 
-  Widget _buildTextField(String hint, {TextEditingController? controller}) {
+  Widget _buildTextField(
+    String hint, {
+    TextEditingController? controller,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
@@ -1189,6 +1220,38 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
             horizontal: 16,
             vertical: 14,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockedField(String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                value,
+                style: const TextStyle(
+                  color: AppColors.textDark,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.lock_outline_rounded,
+              color: AppColors.from_heading.withOpacity(0.8),
+            ),
+          ],
         ),
       ),
     );

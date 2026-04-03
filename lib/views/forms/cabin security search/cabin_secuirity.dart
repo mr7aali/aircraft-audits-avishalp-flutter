@@ -694,6 +694,41 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   String? _linkedHiddenObjectAuditId;
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _isGateLocked = false;
+
+  String _normalizeGateValue(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^gate\s*'), '')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '')
+        .replaceAll(RegExp(r'0+([1-9])'), r'$1');
+  }
+
+  String _formatGateLabel(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+    return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+  }
+
+  String? _resolveGateId(String selectedGate) {
+    final direct = _gateIdsByLabel[selectedGate];
+    if (direct != null && direct.isNotEmpty) {
+      return direct;
+    }
+
+    final normalizedSelected = _normalizeGateValue(selectedGate);
+    for (final entry in _gateIdsByLabel.entries) {
+      if (_normalizeGateValue(entry.key) == normalizedSelected &&
+          entry.value.isNotEmpty) {
+        return entry.value;
+      }
+    }
+
+    return null;
+  }
 
   @override
   void initState() {
@@ -768,6 +803,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
             : 'Gate $gateCode';
         gateLabels.add(label);
         _gateIdsByLabel[label] = gateId;
+        _gateIdsByLabel[gateCode] = gateId;
       }
 
       _areaIdsByLabel.clear();
@@ -851,25 +887,25 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         // Skip if the provided gate is just a placeholder
         if (gText != "—" && gText != "n/a" && gText != "unknown") {
           // Normalization: remove non-alphanumeric, then remove leading zeros from numbers
-          String normalize(String s) {
-            return s
-                .toLowerCase()
-                .replaceAll(RegExp(r'[^a-z0-9]'), '')
-                .replaceAll(RegExp(r'0+([1-9])'), r'$1'); // e.g. "a01" -> "a1"
-          }
-
-          final normalizedInput = normalize(gText);
+          final normalizedInput = _normalizeGateValue(gText);
 
           final match = _ctrl.gateOptions.firstWhereOrNull((opt) {
             if (opt.toLowerCase().contains('select')) return false;
-            final normalizedOpt = normalize(opt);
-            // Check for mutual containment (e.g. "a1" in "gatea1" or vice-versa)
-            return normalizedOpt.contains(normalizedInput) ||
+            final normalizedOpt = _normalizeGateValue(opt);
+            return normalizedOpt == normalizedInput ||
+                normalizedOpt.contains(normalizedInput) ||
                 normalizedInput.contains(normalizedOpt);
           });
 
           if (match != null) {
             _ctrl.selectedGate.value = match;
+            _isGateLocked = true;
+          } else {
+            final fallbackLabel = _formatGateLabel(widget.initialGateNumber!);
+            if (!_ctrl.gateOptions.contains(fallbackLabel)) {
+              _ctrl.gateOptions.insert(1, fallbackLabel);
+            }
+            _ctrl.selectedGate.value = fallbackLabel;
           }
         }
       }
@@ -1526,13 +1562,21 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
                   SizedBox(height: 14.h),
                   _label('Gate *'),
-                  Obx(
-                    () => _pillDropdown(
-                      value: _ctrl.selectedGate.value,
-                      items: _ctrl.gateOptions,
-                      onChanged: (v) => _ctrl.selectedGate.value = v!,
+                  if (_isGateLocked)
+                    Obx(
+                      () => _readOnlyField(
+                        _ctrl.selectedGate.value,
+                        icon: Icons.lock_outline_rounded,
+                      ),
+                    )
+                  else
+                    Obx(
+                      () => _pillDropdown(
+                        value: _ctrl.selectedGate.value,
+                        items: _ctrl.gateOptions,
+                        onChanged: (v) => _ctrl.selectedGate.value = v!,
+                      ),
                     ),
-                  ),
                   SizedBox(height: 14.h),
                   _label('Ship # *'),
                   Obx(
@@ -2365,7 +2409,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
       return;
     }
 
-    final gateId = _gateIdsByLabel[_ctrl.selectedGate.value];
+    final gateId = _resolveGateId(_ctrl.selectedGate.value);
     if (gateId == null || gateId.isEmpty) {
       Get.snackbar(
         'Gate Required',
