@@ -657,7 +657,7 @@ class AppApiService {
       if (parsed is Map<String, dynamic> && parsed.containsKey('success')) {
         if (parsed['success'] == false) {
           throw ApiException(
-            (parsed['message'] as String?) ?? 'Request failed',
+            _extractErrorMessage(parsed),
             statusCode: statusCode,
             code: parsed['code'] as String?,
             details: parsed['details'],
@@ -670,7 +670,7 @@ class AppApiService {
 
     if (parsed is Map<String, dynamic>) {
       throw ApiException(
-        (parsed['message'] as String?) ?? 'Request failed',
+        _extractErrorMessage(parsed),
         statusCode: statusCode,
         code: parsed['code'] as String?,
         details: parsed['details'],
@@ -681,6 +681,29 @@ class AppApiService {
       'Request failed with status $statusCode',
       statusCode: statusCode,
     );
+  }
+
+  String _extractErrorMessage(Map<String, dynamic> parsed) {
+    final rawMessage = parsed['message'];
+    final details = parsed['details'];
+
+    final baseMessage = rawMessage is String && rawMessage.trim().isNotEmpty
+        ? rawMessage.trim()
+        : 'Request failed';
+
+    if (details is List) {
+      final detailLines = details
+          .map((detail) => detail?.toString().trim() ?? '')
+          .where((detail) => detail.isNotEmpty)
+          .toList();
+      if (detailLines.isNotEmpty) {
+        return '$baseMessage\n${detailLines.join('\n')}';
+      }
+    } else if (details is String && details.trim().isNotEmpty) {
+      return '$baseMessage\n${details.trim()}';
+    }
+
+    return baseMessage;
   }
 
   Future<bool> _refreshAccessToken() async {

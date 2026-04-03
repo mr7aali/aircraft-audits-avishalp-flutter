@@ -1,17 +1,27 @@
 const String kSeatMapToiletAsset = 'assets/icons/toilet.svg';
 const String kSeatMapGalleyAsset = 'assets/icons/chiken.svg';
 const String kSeatMapJumpSeatAsset = 'assets/icons/jump-seat.svg';
+const Map<String, double> kDefaultCabinQualityAreaWeights = {
+  'lav': 25,
+  'galley': 20,
+  'main_cabin': 18,
+  'first_class': 15,
+  'comfort': 12,
+  'other': 10,
+};
 
 class AircraftSeatMap {
   const AircraftSeatMap({
     required this.name,
     required this.sections,
     this.hasFirstClassArc = false,
+    this.areaWeights = kDefaultCabinQualityAreaWeights,
   });
 
   final String name;
   final List<SeatSection> sections;
   final bool hasFirstClassArc;
+  final Map<String, double> areaWeights;
 
   factory AircraftSeatMap.fromJson(
     Map<String, dynamic> json, {
@@ -27,6 +37,10 @@ class AircraftSeatMap {
     return AircraftSeatMap(
       name: _asString(json['name']) ?? fallbackName,
       hasFirstClassArc: _asBool(json['hasFirstClassArc']) ?? false,
+      areaWeights: {
+        ...kDefaultCabinQualityAreaWeights,
+        ..._asDoubleMap(json['areaWeights']),
+      },
       sections: sections,
     );
   }
@@ -629,6 +643,7 @@ Map<String, AircraftSeatMap> buildAircraftSeatMapsFromApi(
 
     resolved[name] = AircraftSeatMap(
       name: name,
+      areaWeights: kDefaultCabinQualityAreaWeights,
       sections: const [
         SeatSection(
           name: 'Cabin Layout Pending',
@@ -683,6 +698,29 @@ List<int> _asIntList(dynamic value) {
       .toSet()
       .toList()
     ..sort();
+}
+
+Map<String, double> _asDoubleMap(dynamic value) {
+  if (value is! Map) {
+    return const <String, double>{};
+  }
+
+  final normalized = <String, double>{};
+  value.forEach((key, item) {
+    final parsed = _asDouble(item);
+    if (parsed != null && parsed >= 0) {
+      normalized[key.toString().trim()] = parsed;
+    }
+  });
+  return normalized;
+}
+
+double? _asDouble(dynamic value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+
+  return double.tryParse(value?.toString() ?? '');
 }
 
 String? _asString(dynamic value) {
