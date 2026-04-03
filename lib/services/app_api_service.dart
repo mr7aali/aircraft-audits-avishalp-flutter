@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 
+import '../config/app_env.dart';
 import 'api_exception.dart';
 import 'cloudinary_upload_service.dart';
 import 'session_service.dart';
@@ -25,12 +26,24 @@ class AppApiService {
   final SessionService _sessionService;
   final CloudinaryUploadService _cloudinaryUploadService;
   Completer<bool>? _refreshCompleter;
+  static String? _cachedBaseUrl;
 
-  static String get baseUrl {
-    const configured = String.fromEnvironment('API_BASE_URL');
+  static String get baseUrl => _cachedBaseUrl ??= _resolveBaseUrl();
+
+  static String _resolveBaseUrl() {
+    final configured = AppEnv.apiBaseUrl;
     if (configured.isNotEmpty) {
+      debugPrint(
+        'Using API base URL: ${_normalizeBaseUrl(configured)}'
+        '${AppEnv.loadedAsset.isNotEmpty ? ' (resolved via --dart-define or ${AppEnv.loadedAsset})' : ''}',
+      );
       return _normalizeBaseUrl(configured);
     }
+
+    debugPrint(
+      'No API_BASE_URL configured. Falling back to default host. '
+      'Set API_BASE_URL in ${AppEnv.loadedAsset} or pass --dart-define=API_BASE_URL=...',
+    );
 
     final defaultHost = kReleaseMode
         ? 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api'

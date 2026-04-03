@@ -17,10 +17,7 @@ class _C {
 }
 
 class _StationOption {
-  const _StationOption({
-    required this.id,
-    required this.label,
-  });
+  const _StationOption({required this.id, required this.label});
 
   final String id;
   final String label;
@@ -84,25 +81,34 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
       Map<String, dynamic>? activeStation;
       if (!widget.forceReselect) {
         activeStation = await _api.getActiveStation();
+        _session.saveActiveStation(activeStation);
       } else {
         _session.saveActiveStation(null);
       }
 
-      final mappedStations = stations.map((station) {
-        final code = (station['stationCode'] as String?)?.trim() ?? '';
-        final name = (station['stationName'] as String?)?.trim() ?? '';
-        final label = [code, name]
-            .where((part) => part.isNotEmpty)
-            .join(' - ');
+      final mappedStations = stations
+          .map((station) {
+            final code = (station['stationCode'] as String?)?.trim() ?? '';
+            final name = (station['stationName'] as String?)?.trim() ?? '';
+            final label = [
+              code,
+              name,
+            ].where((part) => part.isNotEmpty).join(' - ');
 
-        return _StationOption(
-          id: (station['stationId'] as String?) ?? '',
-          label: label.isEmpty ? 'Station' : label,
-        );
-      }).where((station) => station.id.isNotEmpty).toList();
+            return _StationOption(
+              id: (station['stationId'] as String?) ?? '',
+              label: label.isEmpty ? 'Station' : label,
+            );
+          })
+          .where((station) => station.id.isNotEmpty)
+          .toList();
 
-      String preselectedId = widget.forceReselect ? '' : _session.activeStationId;
-      if (!widget.forceReselect && preselectedId.isEmpty && activeStation != null) {
+      String preselectedId = widget.forceReselect
+          ? ''
+          : _session.activeStationId;
+      if (!widget.forceReselect &&
+          preselectedId.isEmpty &&
+          activeStation != null) {
         preselectedId = (activeStation['stationId'] as String?) ?? '';
       }
 
@@ -236,7 +242,10 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                 trailingAction: GestureDetector(
                   onTap: _handleLogout,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 8.h,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.18),
                       borderRadius: BorderRadius.circular(20.r),
@@ -248,7 +257,11 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.logout_rounded, color: Colors.white, size: 16.sp),
+                        Icon(
+                          Icons.logout_rounded,
+                          color: Colors.white,
+                          size: 16.sp,
+                        ),
                         SizedBox(width: 6.w),
                         Text(
                           'Logout',
@@ -305,7 +318,8 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                       _buildStationList(),
                       SizedBox(height: 16.h),
                       GestureDetector(
-                        onTap: (_isLoading || _stations.isEmpty || _isSubmitting)
+                        onTap:
+                            (_isLoading || _stations.isEmpty || _isSubmitting)
                             ? null
                             : () => _continueWithStation(),
                         child: Container(
@@ -356,21 +370,17 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
     );
   }
 
-
   Widget _buildStationList() {
     final filtered = _stationQuery.isEmpty
         ? _stations
         : _stations
-            .where((s) => s.label.toLowerCase().contains(_stationQuery))
-            .toList();
+              .where((s) => s.label.toLowerCase().contains(_stationQuery))
+              .toList();
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
-      constraints: BoxConstraints(
-        minHeight: 86.h,
-        maxHeight: 320.h,
-      ),
+      constraints: BoxConstraints(minHeight: 86.h, maxHeight: 320.h),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFF),
         borderRadius: BorderRadius.circular(22.r),
@@ -402,11 +412,19 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
             decoration: InputDecoration(
               hintText: 'Search station...',
               hintStyle: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
-              prefixIcon: Icon(Icons.search_rounded, size: 18.sp, color: _C.muted),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                size: 18.sp,
+                color: _C.muted,
+              ),
               suffixIcon: _stationQuery.isNotEmpty
                   ? GestureDetector(
                       onTap: () => _searchCtrl.clear(),
-                      child: Icon(Icons.close_rounded, size: 16.sp, color: _C.muted),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 16.sp,
+                        color: _C.muted,
+                      ),
                     )
                   : null,
               isDense: true,
@@ -445,10 +463,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
               ),
               child: Text(
                 'No stations found right now.',
-                style: GoogleFonts.dmSans(
-                  fontSize: 13.sp,
-                  color: _C.muted,
-                ),
+                style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
               ),
             )
           else if (filtered.isEmpty)
@@ -492,7 +507,9 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                                 color: _selectedStationId == station.id
                                     ? _C.blue.withOpacity(0.45)
                                     : _C.border,
-                                width: _selectedStationId == station.id ? 1.6 : 1.1,
+                                width: _selectedStationId == station.id
+                                    ? 1.6
+                                    : 1.1,
                               ),
                               boxShadow: [
                                 BoxShadow(
@@ -530,7 +547,8 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                                       color: _selectedStationId == station.id
                                           ? _C.blue
                                           : _C.ink,
-                                      fontWeight: _selectedStationId == station.id
+                                      fontWeight:
+                                          _selectedStationId == station.id
                                           ? FontWeight.w700
                                           : FontWeight.w500,
                                     ),

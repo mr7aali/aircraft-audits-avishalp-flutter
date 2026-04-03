@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:avislap/data/seat_map_config.dart' as seat_map_config;
 import 'package:avislap/models/pending_upload_file.dart';
 import 'package:avislap/services/api_exception.dart';
@@ -296,7 +297,7 @@ class _HiddenObjectAuditListScreenState
   @override
   void initState() {
     super.initState();
-    if (_session.isEmployeeRole) {
+    if (!_session.hasPermission(AppPermissionCodes.hiddenObjectAudit)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -304,7 +305,7 @@ class _HiddenObjectAuditListScreenState
         Get.offAllNamed('/dashboard');
         Get.snackbar(
           'Access Restricted',
-          'Hidden Object Audit is not available for Employee role.',
+          'Hidden Object Audit is not enabled for your current role.',
           backgroundColor: _HOColors.red,
           colorText: Colors.white,
           snackPosition: SnackPosition.TOP,

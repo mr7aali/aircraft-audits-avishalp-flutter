@@ -1,4 +1,5 @@
 import 'package:avislap/services/session_service.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,7 +18,18 @@ class HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = Get.find<SessionService>();
-    final showHiddenObjectAudit = !session.isEmployeeRole;
+    final showLavSafety = session.hasPermission(
+      AppPermissionCodes.lavSafetyObservation,
+    );
+    final showCabinQuality = session.hasPermission(
+      AppPermissionCodes.cabinQualityAudit,
+    );
+    final showCabinSecurity = session.hasPermission(
+      AppPermissionCodes.cabinSecuritySearchTraining,
+    );
+    final showHiddenObjectAudit = session.hasPermission(
+      AppPermissionCodes.hiddenObjectAudit,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -44,7 +56,12 @@ class HomeTab extends StatelessWidget {
               ),
             ),
             SizedBox(height: 16.h),
-            _QuickAccessGrid(showHiddenObjectAudit: showHiddenObjectAudit),
+            _QuickAccessGrid(
+              showLavSafety: showLavSafety,
+              showCabinQuality: showCabinQuality,
+              showCabinSecurity: showCabinSecurity,
+              showHiddenObjectAudit: showHiddenObjectAudit,
+            ),
             SizedBox(height: 40.h),
           ],
         ),
@@ -54,9 +71,17 @@ class HomeTab extends StatelessWidget {
 }
 
 class _QuickAccessGrid extends StatelessWidget {
+  final bool showLavSafety;
+  final bool showCabinQuality;
+  final bool showCabinSecurity;
   final bool showHiddenObjectAudit;
 
-  const _QuickAccessGrid({required this.showHiddenObjectAudit});
+  const _QuickAccessGrid({
+    required this.showLavSafety,
+    required this.showCabinQuality,
+    required this.showCabinSecurity,
+    required this.showHiddenObjectAudit,
+  });
 
   void _showComingSoon(String title) {
     Get.snackbar(
@@ -74,24 +99,27 @@ class _QuickAccessGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> items = [
       // ─── FORMS ──────────────────────────────────────────
-      {
-        'title': 'Lav Safety\nObservation',
-        'icon': Icons.clean_hands,
-        'color': const Color(0xFF0EA5E9),
-        'onTap': () => Get.to(() => LavSafetyObservationScreen()),
-      },
-      {
-        'title': 'Cabin Quality\nAudit',
-        'icon': Icons.check_circle_outline,
-        'color': const Color(0xFF10B981),
-        'onTap': () => Get.to(() => CabinQualityAuditListScreen()),
-      },
-      {
-        'title': 'Cabin Security\nSearch Training',
-        'icon': Icons.security,
-        'color': const Color(0xFFF59E0B),
-        'onTap': () => Get.to(() => CabinSecurityScreen()),
-      },
+      if (showLavSafety)
+        {
+          'title': 'Lav Safety\nObservation',
+          'icon': Icons.clean_hands,
+          'color': const Color(0xFF0EA5E9),
+          'onTap': () => Get.to(() => LavSafetyObservationScreen()),
+        },
+      if (showCabinQuality)
+        {
+          'title': 'Cabin Quality\nAudit',
+          'icon': Icons.check_circle_outline,
+          'color': const Color(0xFF10B981),
+          'onTap': () => Get.to(() => CabinQualityAuditListScreen()),
+        },
+      if (showCabinSecurity)
+        {
+          'title': 'Cabin Security\nSearch Training',
+          'icon': Icons.security,
+          'color': const Color(0xFFF59E0B),
+          'onTap': () => Get.to(() => CabinSecurityScreen()),
+        },
       if (showHiddenObjectAudit)
         {
           'title': 'Hidden Object\nAudit',
@@ -99,7 +127,7 @@ class _QuickAccessGrid extends StatelessWidget {
           'color': const Color(0xFF8B5CF6),
           'onTap': () => Get.to(() => const HiddenObjectAuditListScreen()),
         },
-      
+
       // ─── HR & ADMIN ─────────────────────────────────────
       {
         'title': 'Employee\nDetail',
@@ -174,11 +202,7 @@ class _QuickAccessGrid extends StatelessWidget {
                       color: iColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12.r),
                     ),
-                    child: Icon(
-                      item['icon'],
-                      color: iColor,
-                      size: 24.sp,
-                    ),
+                    child: Icon(item['icon'], color: iColor, size: 24.sp),
                   ),
                   const Spacer(),
                   Text(
@@ -204,10 +228,7 @@ class _HeroSection extends StatelessWidget {
   final String userName;
   final String designation;
 
-  const _HeroSection({
-    required this.userName,
-    required this.designation,
-  });
+  const _HeroSection({required this.userName, required this.designation});
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +269,9 @@ class _HeroSection extends StatelessWidget {
                   child: CircleAvatar(
                     radius: 36.r,
                     backgroundColor: Colors.white24,
-                    backgroundImage: const AssetImage('assets/images/mursalin.jpg'),
+                    backgroundImage: const AssetImage(
+                      'assets/images/mursalin.jpg',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -271,7 +294,10 @@ class _HeroSection extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 8.h,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
@@ -280,10 +306,16 @@ class _HeroSection extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.verified_user, size: 14, color: Colors.blueAccent),
+                      const Icon(
+                        Icons.verified_user,
+                        size: 14,
+                        color: Colors.blueAccent,
+                      ),
                       SizedBox(width: 8.w),
                       Text(
-                        designation.isEmpty ? "STAFF" : designation.toUpperCase(),
+                        designation.isEmpty
+                            ? "STAFF"
+                            : designation.toUpperCase(),
                         style: GoogleFonts.dmSans(
                           fontSize: 12.sp,
                           fontWeight: FontWeight.w800,
@@ -309,11 +341,27 @@ class _DateSection extends StatelessWidget {
   String _formatFullDate() {
     final d = DateTime.now();
     const months = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
     const weekdays = [
-      "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
     ];
     return "${weekdays[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}, ${d.year}";
   }
@@ -339,7 +387,11 @@ class _DateSection extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.calendar_today, color: Color(0xFF3B82F6), size: 18),
+              const Icon(
+                Icons.calendar_today,
+                color: Color(0xFF3B82F6),
+                size: 18,
+              ),
               const SizedBox(width: 12),
               Text(
                 _formatFullDate(),

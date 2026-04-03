@@ -1,5 +1,6 @@
 import 'package:avislap/views/auth/splash_screen.dart';
 import 'package:avislap/views/auth/login_screen.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:avislap/services/session_service.dart';
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
@@ -38,24 +39,44 @@ class RouteHelper {
     ),
     GetPage(
       name: cabinAudit,
-      page: () => CabinAuditScreen(),
+      page: () {
+        final session = Get.find<SessionService>();
+        if (!session.hasPermission(AppPermissionCodes.cabinQualityAudit)) {
+          return const DashboardScreen();
+        }
+        return CabinAuditScreen();
+      },
       transition: Transition.rightToLeft,
     ),
     GetPage(
       name: lavSafety,
-      page: () => LavSafetyObservationScreen(),
+      page: () {
+        final session = Get.find<SessionService>();
+        if (!session.hasPermission(AppPermissionCodes.lavSafetyObservation)) {
+          return const DashboardScreen();
+        }
+        return LavSafetyObservationScreen();
+      },
       transition: Transition.rightToLeft,
     ),
     GetPage(
       name: cabinSecurityTraining,
-      page: () => const CabinQualityAuditScreenN(),
+      page: () {
+        final session = Get.find<SessionService>();
+        if (!session.hasPermission(
+          AppPermissionCodes.cabinSecuritySearchTraining,
+        )) {
+          return const DashboardScreen();
+        }
+        return const CabinQualityAuditScreenN();
+      },
       transition: Transition.rightToLeft,
     ),
     GetPage(
       name: hiddenObjectAudit,
       page: () {
         final session = Get.find<SessionService>();
-        if (session.isEmployeeRole) {
+        if (!session.hasPermission(AppPermissionCodes.hiddenObjectAudit)) {
           return const DashboardScreen();
         }
         return const HiddenObjectAuditListScreen();

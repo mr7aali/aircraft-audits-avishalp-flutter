@@ -1,9 +1,9 @@
 import 'dart:ui';
 import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinAudit.dart';
 import 'package:avislap/views/forms/LAV%20Safety%20Observation/LAVSafety.dart';
-import 'package:avislap/views/forms/cabin%20security%20search/CabinSecurityTrainingScreen.dart';
 import 'package:avislap/views/forms/cabin%20security%20search/cabin_secuirity.dart';
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
+import 'package:avislap/config/app_permission_codes.dart';
 import 'package:avislap/services/session_service.dart';
 import 'package:avislap/widgets/flight_card.dart';
 import 'package:avislap/controllers/aviation_controller.dart';
@@ -21,7 +21,18 @@ class AuditTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = Get.find<SessionService>();
     final aviation = Get.put(AviationController());
-    final showHiddenObjectAudit = !session.isEmployeeRole;
+    final showLavSafety = session.hasPermission(
+      AppPermissionCodes.lavSafetyObservation,
+    );
+    final showCabinQuality = session.hasPermission(
+      AppPermissionCodes.cabinQualityAudit,
+    );
+    final showCabinSecurity = session.hasPermission(
+      AppPermissionCodes.cabinSecuritySearchTraining,
+    );
+    final showHiddenObjectAudit = session.hasPermission(
+      AppPermissionCodes.hiddenObjectAudit,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -51,18 +62,23 @@ class AuditTab extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     children: [
-                       const SizedBox(height: 16),
-                       // Dynamically use the active station code from session
-                       _buildAirportSection(
-                         session.activeStationCode.isEmpty ? "JFK" : session.activeStationCode,
-                         aviation.activeAirport,
-                         showHiddenObjectAudit,
-                         context
-                       ),
-                       const SizedBox(height: 32),
-                     ],
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
+                      // Dynamically use the active station code from session
+                      _buildAirportSection(
+                        session.activeStationCode.isEmpty
+                            ? "JFK"
+                            : session.activeStationCode,
+                        aviation.activeAirport,
+                        showLavSafety,
+                        showCabinQuality,
+                        showCabinSecurity,
+                        showHiddenObjectAudit,
+                        context,
+                      ),
+                      const SizedBox(height: 32),
+                    ],
                   ),
                 ),
               ],
@@ -83,22 +99,25 @@ class AuditTab extends StatelessWidget {
             children: [
               const Icon(Icons.update, size: 14, color: Color(0xFF64748B)),
               const SizedBox(width: 4),
-              Obx(() => Text(
-                "Last updated: ${controller.timeAgo(controller.activeAirport.lastUpdated.value)}",
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12.sp,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w500,
+              Obx(
+                () => Text(
+                  "Last updated: ${controller.timeAgo(controller.activeAirport.lastUpdated.value)}",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              )),
+              ),
             ],
           ),
           Obx(() {
             final totalSeconds = controller.secondsUntilRefresh.value;
             final minutes = totalSeconds ~/ 60;
             final seconds = totalSeconds % 60;
-            final timeStr = "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
-            
+            final timeStr =
+                "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
@@ -123,6 +142,9 @@ class AuditTab extends StatelessWidget {
   Widget _buildAirportSection(
     String iata,
     AirportState state,
+    bool showLavSafety,
+    bool showCabinQuality,
+    bool showCabinSecurity,
     bool showHiddenObject,
     BuildContext context,
   ) {
@@ -134,7 +156,11 @@ class AuditTab extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.flight_takeoff, color: Color(0xFF64748B), size: 20),
+                const Icon(
+                  Icons.flight_takeoff,
+                  color: Color(0xFF64748B),
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   "Flights from $iata",
@@ -150,7 +176,10 @@ class AuditTab extends StatelessWidget {
             Obx(() {
               if (state.status.value == 'success') {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF3B82F6).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(6),
@@ -176,7 +205,14 @@ class AuditTab extends StatelessWidget {
           return const SizedBox.shrink();
         }),
         const SizedBox(height: 16),
-        _buildListContent(state, showHiddenObject, context),
+        _buildListContent(
+          state,
+          showLavSafety,
+          showCabinQuality,
+          showCabinSecurity,
+          showHiddenObject,
+          context,
+        ),
       ],
     );
   }
@@ -210,7 +246,14 @@ class AuditTab extends StatelessWidget {
     );
   }
 
-  Widget _buildListContent(AirportState state, bool showHiddenObject, BuildContext context) {
+  Widget _buildListContent(
+    AirportState state,
+    bool showLavSafety,
+    bool showCabinQuality,
+    bool showCabinSecurity,
+    bool showHiddenObject,
+    BuildContext context,
+  ) {
     return Obx(() {
       if (state.status.value == 'loading' && state.data.isEmpty) {
         return Column(
@@ -259,6 +302,9 @@ class AuditTab extends StatelessWidget {
             flight: flight,
             onStartAudit: () => _showAuditTypeDialog(
               context,
+              showLavSafety,
+              showCabinQuality,
+              showCabinSecurity,
               showHiddenObject,
               flight,
             ),
@@ -270,6 +316,9 @@ class AuditTab extends StatelessWidget {
 
   void _showAuditTypeDialog(
     BuildContext context,
+    bool showLavSafety,
+    bool showCabinQuality,
+    bool showCabinSecurity,
     bool showHiddenObject,
     AviationFlight flight,
   ) {
@@ -315,59 +364,89 @@ class AuditTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            _AuditOptionTile(
-              title: "Lav Safety Observation",
-              subtitle: "Safety check for lavatory maintenance",
-              icon: Icons.clean_hands,
-              color: const Color(0xFF0EA5E9),
-              onTap: () {
-                Get.back();
-                Get.to(() => LAVSafetyScreen(
-                  initialShipNumber: flight.shipNumber,
-                  initialGateNumber: flight.departureGate,
-                ));
-              },
-            ),
-            const SizedBox(height: 12),
-            _AuditOptionTile(
-              title: "Cabin Quality Audit",
-              subtitle: "General cabin quality and cleanliness",
-              icon: Icons.check_circle_outline,
-              color: const Color(0xFF10B981),
-              onTap: () {
-                Get.back();
-                Get.to(() => CabinAuditScreen(
-                  initialShipNumber: flight.shipNumber,
-                  initialGateNumber: flight.departureGate,
-                  initialFlightNumber: flight.flightNumber,
-                ));
-              },
-            ),
-            const SizedBox(height: 12),
-            _AuditOptionTile(
-              title: "Cabin Security Search Training",
-              subtitle: "Form-based security search training",
-              icon: Icons.security,
-              color: const Color(0xFFF59E0B),
-              onTap: () {
-                Get.back();
-                Get.to(() => CabinQualityAuditScreenN(
-                  initialShipNumber: flight.shipNumber,
-                  initialGateNumber: flight.departureGate,
-                ));
-              },
-            ),
-            const SizedBox(height: 12),
-            _AuditOptionTile(
-              title: "Hidden Object Audit",
-              subtitle: "Conduct blind security search test",
-              icon: Icons.search,
-              color: const Color(0xFF8B5CF6),
-              onTap: () {
-                Get.back();
-                Get.to(() => const HiddenObjectAuditWorkflowScreen());
-              },
-            ),
+            if (showLavSafety) ...[
+              _AuditOptionTile(
+                title: "Lav Safety Observation",
+                subtitle: "Safety check for lavatory maintenance",
+                icon: Icons.clean_hands,
+                color: const Color(0xFF0EA5E9),
+                onTap: () {
+                  Get.back();
+                  Get.to(
+                    () => LAVSafetyScreen(
+                      initialShipNumber: flight.shipNumber,
+                      initialGateNumber: flight.departureGate,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (showCabinQuality) ...[
+              _AuditOptionTile(
+                title: "Cabin Quality Audit",
+                subtitle: "General cabin quality and cleanliness",
+                icon: Icons.check_circle_outline,
+                color: const Color(0xFF10B981),
+                onTap: () {
+                  Get.back();
+                  Get.to(
+                    () => CabinAuditScreen(
+                      initialShipNumber: flight.shipNumber,
+                      initialGateNumber: flight.departureGate,
+                      initialFlightNumber: flight.flightNumber,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (showCabinSecurity) ...[
+              _AuditOptionTile(
+                title: "Cabin Security Search Training",
+                subtitle: "Form-based security search training",
+                icon: Icons.security,
+                color: const Color(0xFFF59E0B),
+                onTap: () {
+                  Get.back();
+                  Get.to(
+                    () => CabinQualityAuditScreenN(
+                      initialShipNumber: flight.shipNumber,
+                      initialGateNumber: flight.departureGate,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (showHiddenObject) ...[
+              _AuditOptionTile(
+                title: "Hidden Object Audit",
+                subtitle: "Conduct blind security search test",
+                icon: Icons.search,
+                color: const Color(0xFF8B5CF6),
+                onTap: () {
+                  Get.back();
+                  Get.to(() => const HiddenObjectAuditWorkflowScreen());
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (!showLavSafety &&
+                !showCabinQuality &&
+                !showCabinSecurity &&
+                !showHiddenObject)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  "No audit workflows are assigned to your current role for this station.",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14.sp,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ],
         ),
@@ -428,10 +507,7 @@ class _AuditOptionTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -476,16 +552,31 @@ class _SkeletonCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(width: 120.w, height: 20, color: Colors.grey[300]),
-                    Container(width: 60.w, height: 25, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                    Container(
+                      width: 120.w,
+                      height: 20,
+                      color: Colors.grey[300],
+                    ),
+                    Container(
+                      width: 60.w,
+                      height: 25,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ],
                 ),
                 const Spacer(),
                 Row(
                   children: [
-                    Expanded(child: Container(height: 40, color: Colors.grey[300])),
+                    Expanded(
+                      child: Container(height: 40, color: Colors.grey[300]),
+                    ),
                     const SizedBox(width: 20),
-                    Expanded(child: Container(height: 40, color: Colors.grey[300])),
+                    Expanded(
+                      child: Container(height: 40, color: Colors.grey[300]),
+                    ),
                   ],
                 ),
               ],
