@@ -176,7 +176,7 @@ class AmenityRow {
 class CabinAudit extends GetxController {
   final selectedAircraft = 'Boeing 757-300 (75Y)'.obs;
   final selectedGate = 'Please Select One'.obs;
-  final selectedCleanType = 'Charter'.obs;
+  final selectedCleanType = 'Please Select One'.obs;
   final supervisorName = ''.obs;
 
   // auditedSeats stores seatId → overall status ('pass'/'fail'/'na')
@@ -196,6 +196,7 @@ class CabinAudit extends GetxController {
     'Gate - D',
   ];
   final List<String> cleanTypeOptions = [
+    'Please Select One',
     'Charter',
     'Diversion',
     'DCS Turn',
@@ -593,6 +594,16 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
   }
 
+  String _normalizeCleanTypeValue(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll('–', '-')
+        .replaceAll('—', '-')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+  }
+
   String? _resolveGateId(String selectedGate) {
     final direct = _gateIdsByLabel[selectedGate];
     if (direct != null && direct.isNotEmpty) {
@@ -602,6 +613,23 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     final normalizedSelected = _normalizeGateValue(selectedGate);
     for (final entry in _gateIdsByLabel.entries) {
       if (_normalizeGateValue(entry.key) == normalizedSelected &&
+          entry.value.isNotEmpty) {
+        return entry.value;
+      }
+    }
+
+    return null;
+  }
+
+  String? _resolveCleanTypeId(String selectedCleanType) {
+    final direct = _cleanTypeIdsByLabel[selectedCleanType];
+    if (direct != null && direct.isNotEmpty) {
+      return direct;
+    }
+
+    final normalizedSelected = _normalizeCleanTypeValue(selectedCleanType);
+    for (final entry in _cleanTypeIdsByLabel.entries) {
+      if (_normalizeCleanTypeValue(entry.key) == normalizedSelected &&
           entry.value.isNotEmpty) {
         return entry.value;
       }
@@ -745,7 +773,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       _ctrl.selectedGate.value = 'Please Select One';
 
       _cleanTypeIdsByLabel.clear();
-      _ctrl.cleanTypeOptions.clear();
+      _ctrl.cleanTypeOptions
+        ..clear()
+        ..add('Please Select One');
       for (final cleanType in cleanTypes) {
         final cleanTypeId = cleanType['id']?.toString() ?? '';
         final name = cleanType['name']?.toString().trim() ?? '';
@@ -755,9 +785,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         _cleanTypeIdsByLabel[name] = cleanTypeId;
         _ctrl.cleanTypeOptions.add(name);
       }
-      if (_ctrl.cleanTypeOptions.isNotEmpty) {
-        _ctrl.selectedCleanType.value = _ctrl.cleanTypeOptions.first;
-      }
+      _ctrl.selectedCleanType.value = 'Please Select One';
 
       final syncedAircraftMaps = _ctrl._convertSeatMaps(
         seat_map_config.buildAircraftSeatMapsFromApi(aircraftTypes),
@@ -997,6 +1025,16 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
             Get.snackbar(
               'Incomplete',
               'Please select the gate before continuing.',
+              snackPosition: SnackPosition.TOP,
+              backgroundColor: Colors.red,
+              colorText: Colors.white,
+            );
+            return;
+          }
+          if (_ctrl.selectedCleanType.value == 'Please Select One') {
+            Get.snackbar(
+              'Incomplete',
+              'Please select the clean type before continuing.',
               snackPosition: SnackPosition.TOP,
               backgroundColor: Colors.red,
               colorText: Colors.white,
@@ -3269,9 +3307,16 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     }
 
     final draftCleanType = draft['selectedCleanType']?.toString().trim() ?? '';
-    if (draftCleanType.isNotEmpty &&
-        _ctrl.cleanTypeOptions.contains(draftCleanType)) {
-      _ctrl.selectedCleanType.value = draftCleanType;
+    if (draftCleanType.isNotEmpty) {
+      final match = _ctrl.cleanTypeOptions.firstWhereOrNull(
+        (option) =>
+            option == draftCleanType ||
+            _normalizeCleanTypeValue(option) ==
+                _normalizeCleanTypeValue(draftCleanType),
+      );
+      if (match != null) {
+        _ctrl.selectedCleanType.value = match;
+      }
     }
 
     _supervisorCtrl.text =
@@ -3621,7 +3666,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     }
 
     final gateId = _resolveGateId(_ctrl.selectedGate.value);
-    final cleanTypeId = _cleanTypeIdsByLabel[_ctrl.selectedCleanType.value];
+    final cleanTypeId = _resolveCleanTypeId(_ctrl.selectedCleanType.value);
     if (gateId == null || gateId.isEmpty) {
       Get.snackbar(
         'Incomplete',
