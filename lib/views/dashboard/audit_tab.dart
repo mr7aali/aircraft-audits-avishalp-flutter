@@ -157,13 +157,13 @@ class AuditTab extends StatelessWidget {
             Row(
               children: [
                 const Icon(
-                  Icons.flight_takeoff,
+                  Icons.flight_land,
                   color: Color(0xFF64748B),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  "Flights from $iata",
+                  "Flights arriving at $iata",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w800,
@@ -375,7 +375,7 @@ class AuditTab extends StatelessWidget {
                   Get.to(
                     () => LAVSafetyScreen(
                       initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.departureGate,
+                      initialGateNumber: flight.arrivalGate,
                     ),
                   );
                 },
@@ -393,7 +393,7 @@ class AuditTab extends StatelessWidget {
                   Get.to(
                     () => CabinAuditScreen(
                       initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.departureGate,
+                      initialGateNumber: flight.arrivalGate,
                       initialFlightNumber: flight.flightNumber,
                     ),
                   );
@@ -412,7 +412,7 @@ class AuditTab extends StatelessWidget {
                   Get.to(
                     () => CabinQualityAuditScreenN(
                       initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.departureGate,
+                      initialGateNumber: flight.arrivalGate,
                     ),
                   );
                 },

@@ -94,7 +94,7 @@ class AviationController extends GetxController {
     try {
       final Map<String, dynamic> params = {
         'access_key': AviationStackConfig.apiKey,
-        'dep_iata': iata,
+        'arr_iata': iata,
         'limit': '100',
       };
 
@@ -206,10 +206,10 @@ class AviationController extends GetxController {
         if (a.status == 'active' && b.status != 'active') return -1;
         if (a.status != 'active' && b.status == 'active') return 1;
 
-        if (a.departureTime == null && b.departureTime == null) return 0;
-        if (a.departureTime == null) return 1;
-        if (b.departureTime == null) return -1;
-        return a.departureTime!.compareTo(b.departureTime!);
+        if (a.arrivalTime == null && b.arrivalTime == null) return 0;
+        if (a.arrivalTime == null) return 1;
+        if (b.arrivalTime == null) return -1;
+        return a.arrivalTime!.compareTo(b.arrivalTime!);
       });
     } catch (e) {
       // Sorting error doesn't crash the fetch

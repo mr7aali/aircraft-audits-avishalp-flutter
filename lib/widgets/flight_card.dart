@@ -214,14 +214,14 @@ class _FlightCardState extends State<FlightCard> {
         Expanded(
           child: _buildInfoGroup(
             label: "TERMINAL",
-            value: widget.flight.departureTerminal,
+            value: widget.flight.arrivalTerminal,
             color: AviationStackConfig.terminalColor,
           ),
         ),
         Expanded(
           child: _buildInfoGroup(
             label: "GATE",
-            value: widget.flight.departureGate,
+            value: widget.flight.arrivalGate,
             color: AviationStackConfig.gateColor,
           ),
         ),

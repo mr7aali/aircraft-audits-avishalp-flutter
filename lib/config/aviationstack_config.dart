@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AviationStackConfig {
-  static const String apiKey = 'dc0e1d778334ee683f6f3d563f011945';
+  static const String apiKey = 'cb920726df254831bb562bfe1260144e';
   static const String baseUrl = 'http://api.aviationstack.com/v1/flights';
 
   // Semantic Colors per Task 1
