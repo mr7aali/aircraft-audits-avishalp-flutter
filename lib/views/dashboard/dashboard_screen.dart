@@ -6,7 +6,7 @@ import 'package:motion_tab_bar/MotionTabBarController.dart';
 import '../../utils/app_colors.dart';
 import 'home_tab.dart';
 import 'audit_tab.dart';
-import 'history_tab.dart';
+import 'quick_start_tab.dart';
 import 'profile_tab.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -49,8 +49,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           children: const [
             HomeTab(),
             AuditTab(),
+            QuickStartTab(),
             InboxScreen(),
-            HistoryTab(),
             ProfileTab(),
           ],
         ),
@@ -59,12 +59,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         controller: _motionTabBarController,
         initialSelectedTab: "Home",
         useSafeArea: true,
-        labels: const ["Home", "Audit", "Chat", "History", "Profile"],
+        labels: const ["Home", "Audit", "Quick Start", "Chat", "Profile"],
         icons: const [
           Icons.home_outlined,
           Icons.assignment_outlined,
+          Icons.flash_on_outlined,
           Icons.chat_bubble_outline,
-          Icons.history,
           Icons.person_outline,
         ],
         badges: const [null, null, null, null, null],
