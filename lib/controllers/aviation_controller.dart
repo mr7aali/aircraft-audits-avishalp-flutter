@@ -9,18 +9,22 @@ import '../services/session_service.dart';
 
 class AirportState {
   final RxString status = 'idle'.obs;
-  final RxList<AviationFlight> data = <AviationFlight>[].obs;
+  final RxList<AviationFlight> arrivals = <AviationFlight>[].obs;
+  final RxList<AviationFlight> departures = <AviationFlight>[].obs;
   final Rx<DateTime?> lastUpdated = Rx<DateTime?>(null);
   final Rx<String?> error = Rx<String?>(null);
+
+  List<AviationFlight> get allFlights => [...arrivals, ...departures];
 
   void setLoading() {
     status.value = 'loading';
     error.value = null;
   }
 
-  void setSuccess(List<AviationFlight> newData) {
+  void setSuccess(List<AviationFlight> arr, List<AviationFlight> dep) {
     status.value = 'success';
-    data.assignAll(newData);
+    arrivals.assignAll(arr);
+    departures.assignAll(dep);
     lastUpdated.value = DateTime.now();
   }
 
@@ -108,7 +112,6 @@ class AviationController extends GetxController {
         'access_key': AviationStackConfig.apiKey,
         'arr_iata': iata,
         'limit': '100',
-        'dep_iata': iata,
       };
 
       if (!isRetry) {
@@ -162,8 +165,7 @@ class AviationController extends GetxController {
             if (rawData.isEmpty && !isRetry) {
               return _fetchAirportData(iata, state, isRetry: true);
             }
-            final processedData = _processRawData(rawData);
-            state.setSuccess(processedData);
+            _splitAndSetData(rawData, state, iata);
             return;
           }
         }
@@ -192,9 +194,11 @@ class AviationController extends GetxController {
     }
   }
 
-  List<AviationFlight> _processRawData(List<dynamic> rawData) {
-    if (rawData.isEmpty) return [];
-
+  void _splitAndSetData(
+    List<dynamic> rawData,
+    AirportState state,
+    String iata,
+  ) {
     final allFlights = <AviationFlight>[];
     for (var item in rawData) {
       try {
@@ -206,36 +210,69 @@ class AviationController extends GetxController {
       }
     }
 
-    if (allFlights.isEmpty) return [];
+    if (allFlights.isEmpty) {
+      state.setSuccess(const <AviationFlight>[], const <AviationFlight>[]);
+      return;
+    }
 
     final filtered = allFlights.where((f) {
       return f.departureIata != "—" || f.arrivalIata != "—";
     }).toList();
 
     final deduplicated = <String, AviationFlight>{};
-    for (var f in filtered) {
-      if (!deduplicated.containsKey(f.flightNumber)) {
-        deduplicated[f.flightNumber] = f;
+    for (var f in allFlights) {
+      final flightNumber = f.flightNumber.trim();
+      if (flightNumber.isEmpty) {
+        continue;
+      }
+      if (!deduplicated.containsKey(flightNumber)) {
+        deduplicated[flightNumber] = f;
       }
     }
 
+    final normalizedIata = iata.trim().toUpperCase();
     final result = deduplicated.values.toList();
+    final arrivals = result
+        .where(
+          (flight) => flight.arrivalIata.trim().toUpperCase() == normalizedIata,
+        )
+        .toList();
+    final departures = result
+        .where(
+          (flight) =>
+              flight.departureIata.trim().toUpperCase() == normalizedIata,
+        )
+        .toList();
 
+    _sortFlightsByTime(arrivals, selector: (flight) => flight.arrivalTime);
+    _sortFlightsByTime(departures, selector: (flight) => flight.departureTime);
+
+    state.setSuccess(arrivals, departures);
+  }
+
+  void _sortFlightsByTime(
+    List<AviationFlight> flights, {
+    required DateTime? Function(AviationFlight flight) selector,
+  }) {
     try {
-      result.sort((a, b) {
-        if (a.status == 'active' && b.status != 'active') return -1;
-        if (a.status != 'active' && b.status == 'active') return 1;
+      flights.sort((a, b) {
+        final isAActive = a.status == 'active';
+        final isBActive = b.status == 'active';
 
-        if (a.arrivalTime == null && b.arrivalTime == null) return 0;
-        if (a.arrivalTime == null) return 1;
-        if (b.arrivalTime == null) return -1;
-        return a.arrivalTime!.compareTo(b.arrivalTime!);
+        if (isAActive && !isBActive) return -1;
+        if (!isAActive && isBActive) return 1;
+
+        final aTime = selector(a);
+        final bTime = selector(b);
+
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return aTime.compareTo(bTime);
       });
     } catch (e) {
       // Sorting error doesn't crash the fetch
     }
-
-    return result;
   }
 
   String timeAgo(DateTime? time) {

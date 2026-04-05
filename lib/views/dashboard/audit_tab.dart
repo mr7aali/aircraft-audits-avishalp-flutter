@@ -181,9 +181,7 @@ class _AuditTabState extends State<AuditTab> {
                   labelStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 13.sp,
                     fontWeight: FontWeight.w700,
-                    color: selected
-                        ? Colors.white
-                        : const Color(0xFF334155),
+                    color: selected ? Colors.white : const Color(0xFF334155),
                   ),
                   selectedColor: const Color(0xFF0F766E),
                   backgroundColor: const Color(0xFFF8FAFC),
@@ -290,9 +288,8 @@ class _AuditTabState extends State<AuditTab> {
                       buildChoiceChip(
                         label: 'Cancelled',
                         selected: tempStatus == 'cancelled',
-                        onTap: () => setModalState(
-                          () => tempStatus = 'cancelled',
-                        ),
+                        onTap: () =>
+                            setModalState(() => tempStatus = 'cancelled'),
                       ),
                     ],
                   ),
@@ -367,30 +364,26 @@ class _AuditTabState extends State<AuditTab> {
                       buildChoiceChip(
                         label: 'Arrival Time',
                         selected: tempSort == 'arrival_asc',
-                        onTap: () => setModalState(
-                          () => tempSort = 'arrival_asc',
-                        ),
+                        onTap: () =>
+                            setModalState(() => tempSort = 'arrival_asc'),
                       ),
                       buildChoiceChip(
                         label: 'Latest First',
                         selected: tempSort == 'arrival_desc',
-                        onTap: () => setModalState(
-                          () => tempSort = 'arrival_desc',
-                        ),
+                        onTap: () =>
+                            setModalState(() => tempSort = 'arrival_desc'),
                       ),
                       buildChoiceChip(
                         label: 'Airline A-Z',
                         selected: tempSort == 'airline_asc',
-                        onTap: () => setModalState(
-                          () => tempSort = 'airline_asc',
-                        ),
+                        onTap: () =>
+                            setModalState(() => tempSort = 'airline_asc'),
                       ),
                       buildChoiceChip(
                         label: 'Flight Number',
                         selected: tempSort == 'flight_asc',
-                        onTap: () => setModalState(
-                          () => tempSort = 'flight_asc',
-                        ),
+                        onTap: () =>
+                            setModalState(() => tempSort = 'flight_asc'),
                       ),
                     ],
                   ),
@@ -601,7 +594,7 @@ class _AuditTabState extends State<AuditTab> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    "${state.data.length} flights",
+                    "${state.allFlights.length} flights",
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w700,
@@ -615,7 +608,7 @@ class _AuditTabState extends State<AuditTab> {
           ],
         ),
         Obx(() {
-          if (state.status.value == 'error' && state.data.isEmpty) {
+          if (state.status.value == 'error' && state.allFlights.isEmpty) {
             return _buildErrorPlaceholder(state.error.value ?? "Unknown error");
           }
           return const SizedBox.shrink();
@@ -666,8 +659,8 @@ class _AuditTabState extends State<AuditTab> {
 
   Widget _buildSearchAndFilterBar(BuildContext context, AirportState state) {
     return Obx(() {
-      final totalFlights = state.data.length;
-      final visibleFlights = _applyFilters(state.data);
+      final totalFlights = state.allFlights.length;
+      final visibleFlights = _applyFilters(state.allFlights);
       final activeCount = _activeFilterCount();
 
       return Column(
@@ -704,7 +697,8 @@ class _AuditTabState extends State<AuditTab> {
                         color: const Color(0xFF0F172A),
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Search by flight, airline, gate, ship number...',
+                        hintText:
+                            'Search by flight, airline, gate, ship number...',
                         hintStyle: GoogleFonts.plusJakartaSans(
                           fontSize: 13.sp,
                           fontWeight: FontWeight.w500,
@@ -876,15 +870,15 @@ class _AuditTabState extends State<AuditTab> {
     BuildContext context,
   ) {
     return Obx(() {
-      final filteredFlights = _applyFilters(state.data);
+      final filteredFlights = _applyFilters(state.allFlights);
 
-      if (state.status.value == 'loading' && state.data.isEmpty) {
+      if (state.status.value == 'loading' && state.allFlights.isEmpty) {
         return Column(
           children: List.generate(2, (index) => const _SkeletonCard()),
         );
       }
 
-      if (state.data.isEmpty) {
+      if (state.allFlights.isEmpty) {
         return Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 40),
