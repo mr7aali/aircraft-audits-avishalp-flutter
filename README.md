@@ -1,5 +1,6 @@
 # avislap
-
+A cross‑platform Flutter application for managing and performing **aircraft audits**.  
+This app communicates with a backend API and supports multiple environments.
 ## API Base URL Setup
 
 The app reads `API_BASE_URL` from `String.fromEnvironment()` in
