@@ -18,18 +18,6 @@ class HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = Get.find<SessionService>();
-    final showLavSafety = session.hasPermission(
-      AppPermissionCodes.lavSafetyObservation,
-    );
-    final showCabinQuality = session.hasPermission(
-      AppPermissionCodes.cabinQualityAudit,
-    );
-    final showCabinSecurity = session.hasPermission(
-      AppPermissionCodes.cabinSecuritySearchTraining,
-    );
-    final showHiddenObjectAudit = session.hasPermission(
-      AppPermissionCodes.hiddenObjectAudit,
-    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -43,28 +31,66 @@ class HomeTab extends StatelessWidget {
             ),
             const _DateSection(),
             SizedBox(height: 24.h),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                "Quick Access",
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.dark,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ),
-            SizedBox(height: 16.h),
-            _QuickAccessGrid(
-              showLavSafety: showLavSafety,
-              showCabinQuality: showCabinQuality,
-              showCabinSecurity: showCabinSecurity,
-              showHiddenObjectAudit: showHiddenObjectAudit,
-            ),
+            const QuickAccessSection(),
             SizedBox(height: 40.h),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class QuickAccessSection extends StatelessWidget {
+  final String title;
+  final EdgeInsetsGeometry? padding;
+
+  const QuickAccessSection({
+    super.key,
+    this.title = "Quick Access",
+    this.padding,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final session = Get.find<SessionService>();
+    final showLavSafety = session.hasPermission(
+      AppPermissionCodes.lavSafetyObservation,
+    );
+    final showCabinQuality = session.hasPermission(
+      AppPermissionCodes.cabinQualityAudit,
+    );
+    final showCabinSecurity = session.hasPermission(
+      AppPermissionCodes.cabinSecuritySearchTraining,
+    );
+    final showHiddenObjectAudit = session.hasPermission(
+      AppPermissionCodes.hiddenObjectAudit,
+    );
+
+    return Padding(
+      padding: padding ?? EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              title,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.dark,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          SizedBox(height: 16.h),
+          _QuickAccessGrid(
+            showLavSafety: showLavSafety,
+            showCabinQuality: showCabinQuality,
+            showCabinSecurity: showCabinSecurity,
+            showHiddenObjectAudit: showHiddenObjectAudit,
+          ),
+        ],
       ),
     );
   }

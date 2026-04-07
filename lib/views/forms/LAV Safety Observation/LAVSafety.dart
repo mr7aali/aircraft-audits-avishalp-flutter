@@ -40,6 +40,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   List<Map<String, dynamic>> _gates = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _checklistItems = <Map<String, dynamic>>[];
   List<String> _gateOptions = const ['Please Select One'];
+  final Map<String, String> _gateIdsByLabel = <String, String>{};
   bool _isGateLocked = false;
   // ── step: 0 = Job Details, 1 = Checklist, 2 = Notes/Submit
   int _step = 0;
@@ -84,6 +85,23 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
       return trimmed;
     }
     return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+  }
+
+  String? _resolveGateId(String selectedGate) {
+    final direct = _gateIdsByLabel[selectedGate];
+    if (direct != null && direct.isNotEmpty) {
+      return direct;
+    }
+
+    final normalizedSelected = _normalizeGateValue(selectedGate);
+    for (final entry in _gateIdsByLabel.entries) {
+      if (_normalizeGateValue(entry.key) == normalizedSelected &&
+          entry.value.isNotEmpty) {
+        return entry.value;
+      }
+    }
+
+    return null;
   }
 
   // ─────────────────────────────────────────────
@@ -161,6 +179,20 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
         return checklistItemId.isNotEmpty;
       }).toList();
       _gates = List<Map<String, dynamic>>.from(results[1]);
+      _gateIdsByLabel.clear();
+      for (final gate in _gates) {
+        final gateId = gate['id']?.toString() ?? '';
+        final gateCode = gate['gateCode']?.toString().trim() ?? '';
+        if (gateId.isEmpty || gateCode.isEmpty) {
+          continue;
+        }
+
+        final label = gateCode.toLowerCase().startsWith('gate ')
+            ? gateCode
+            : 'Gate $gateCode';
+        _gateIdsByLabel[label] = gateId;
+        _gateIdsByLabel[gateCode] = gateId;
+      }
       _gateOptions = [
         'Please Select One',
         ..._gates.map(
@@ -204,6 +236,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
               ];
             }
             _selectedGate = fallbackLabel;
+            _isGateLocked = true;
           }
         }
       }
@@ -226,14 +259,12 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   }
 
   Map<String, dynamic>? _selectedGateRecord() {
-    if (_selectedGate == 'Please Select One') {
+    final gateId = _resolveGateId(_selectedGate);
+    if (gateId == null || gateId.isEmpty) {
       return null;
     }
-    final normalizedSelected = _normalizeGateValue(_selectedGate);
     for (final gate in _gates) {
-      final gateCode = (gate['gateCode'] as String?)?.trim() ?? '';
-      if (gateCode == _selectedGate ||
-          _normalizeGateValue(gateCode) == normalizedSelected) {
+      if (gate['id']?.toString() == gateId) {
         return gate;
       }
     }

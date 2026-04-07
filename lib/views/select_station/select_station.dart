@@ -307,7 +307,11 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Select your station to begin',
+                        _isLoading
+                            ? 'Loading your station access'
+                            : _stations.isEmpty
+                            ? 'No station assigned yet'
+                            : 'Select your assigned station to begin',
                         style: GoogleFonts.dmSans(
                           fontSize: 13.sp,
                           color: Colors.grey.shade500,
@@ -354,6 +358,19 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                                 ),
                         ),
                       ),
+                      if (!_isLoading && _stations.isEmpty) ...[
+                        SizedBox(height: 14.h),
+                        Text(
+                          'No station assigned yet. Please contact your administrator.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13.sp,
+                            color: _C.muted,
+                            height: 1.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -406,46 +423,48 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
           ),
           SizedBox(height: 10.h),
           // ── Search bar ──
-          TextField(
-            controller: _searchCtrl,
-            style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.ink),
-            decoration: InputDecoration(
-              hintText: 'Search station...',
-              hintStyle: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
-              prefixIcon: Icon(
-                Icons.search_rounded,
-                size: 18.sp,
-                color: _C.muted,
-              ),
-              suffixIcon: _stationQuery.isNotEmpty
-                  ? GestureDetector(
-                      onTap: () => _searchCtrl.clear(),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 16.sp,
-                        color: _C.muted,
-                      ),
-                    )
-                  : null,
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(vertical: 10.h),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14.r),
-                borderSide: BorderSide(color: _C.border, width: 1.2),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14.r),
-                borderSide: BorderSide(color: _C.border, width: 1.2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14.r),
-                borderSide: BorderSide(color: _C.blue, width: 1.5),
+          if (_isLoading || _stations.isNotEmpty) ...[
+            TextField(
+              controller: _searchCtrl,
+              style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.ink),
+              decoration: InputDecoration(
+                hintText: 'Search station...',
+                hintStyle: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 18.sp,
+                  color: _C.muted,
+                ),
+                suffixIcon: _stationQuery.isNotEmpty
+                    ? GestureDetector(
+                        onTap: () => _searchCtrl.clear(),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 16.sp,
+                          color: _C.muted,
+                        ),
+                      )
+                    : null,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 10.h),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14.r),
+                  borderSide: BorderSide(color: _C.border, width: 1.2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14.r),
+                  borderSide: BorderSide(color: _C.border, width: 1.2),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14.r),
+                  borderSide: BorderSide(color: _C.blue, width: 1.5),
+                ),
               ),
             ),
-          ),
-          SizedBox(height: 10.h),
+            SizedBox(height: 10.h),
+          ],
           if (_isLoading)
             SizedBox(
               height: 52.h,
@@ -462,8 +481,12 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                 borderRadius: BorderRadius.circular(16.r),
               ),
               child: Text(
-                'No stations found right now.',
-                style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
+                'No station assigned yet. Please contact your administrator.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13.sp,
+                  color: _C.muted,
+                  height: 1.5,
+                ),
               ),
             )
           else if (filtered.isEmpty)
@@ -475,7 +498,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                 borderRadius: BorderRadius.circular(16.r),
               ),
               child: Text(
-                'No stations match "${_searchCtrl.text}".',
+                'No assigned stations match "${_searchCtrl.text}".',
                 style: GoogleFonts.dmSans(fontSize: 13.sp, color: _C.muted),
               ),
             )
