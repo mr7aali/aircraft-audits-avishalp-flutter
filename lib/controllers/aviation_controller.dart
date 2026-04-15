@@ -43,16 +43,14 @@ class AviationController extends GetxController {
   final SessionService _session = Get.find<SessionService>();
 
   final activeAirport = AirportState();
-  final RxInt secondsUntilRefresh = 300.obs;
+  final RxInt secondsUntilRefresh = 0.obs;
 
   Timer? _refreshTimer;
   Timer? _countdownTimer;
-  int _refreshIntervalSeconds = 300;
 
   @override
   void onInit() {
     super.onInit();
-    _startTimers();
     fetchFlights();
   }
 
@@ -63,28 +61,26 @@ class AviationController extends GetxController {
     super.onClose();
   }
 
-  void _startTimers() {
+  void _startTimers(int nextRefreshInSeconds) {
     _refreshTimer?.cancel();
     _countdownTimer?.cancel();
-    secondsUntilRefresh.value = _refreshIntervalSeconds;
+    secondsUntilRefresh.value = nextRefreshInSeconds;
 
-    _refreshTimer = Timer.periodic(
-      Duration(seconds: _refreshIntervalSeconds),
-      (_) => fetchFlights(),
+    _refreshTimer = Timer(
+      Duration(seconds: nextRefreshInSeconds),
+      fetchFlights,
     );
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (secondsUntilRefresh.value > 0) {
         secondsUntilRefresh.value--;
       } else {
-        secondsUntilRefresh.value = _refreshIntervalSeconds;
+        _countdownTimer?.cancel();
       }
     });
   }
 
   Future<void> fetchFlights() async {
-    secondsUntilRefresh.value = _refreshIntervalSeconds;
-
     if (_session.activeStationCode.isEmpty) {
       activeAirport.setError('No active station selected.');
       return;
@@ -102,12 +98,15 @@ class AviationController extends GetxController {
       final cache = response['cache'];
 
       if (cache is Map<String, dynamic>) {
-        final nextInterval = _readPositiveInt(cache['ttlSeconds']);
-        if (nextInterval != null && nextInterval != _refreshIntervalSeconds) {
-          _refreshIntervalSeconds = nextInterval;
-          _startTimers();
+        final nextRefreshInSeconds =
+            _readPositiveInt(cache['remainingSeconds']) ??
+            _readPositiveInt(cache['ttlSeconds']) ??
+            300;
+
+        if (nextRefreshInSeconds > 0) {
+          _startTimers(nextRefreshInSeconds);
         } else {
-          secondsUntilRefresh.value = _refreshIntervalSeconds;
+          secondsUntilRefresh.value = 0;
         }
 
         activeAirport.setSuccess(
