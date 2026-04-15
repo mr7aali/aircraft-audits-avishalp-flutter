@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-import 'package:get/get.dart' hide Response;
-import '../config/aviationstack_config.dart';
+
+import 'package:get/get.dart';
+
 import '../models/aviationstack_model.dart';
+import '../services/api_exception.dart';
+import '../services/app_api_service.dart';
 import '../services/session_service.dart';
 
 class AirportState {
@@ -21,11 +21,15 @@ class AirportState {
     error.value = null;
   }
 
-  void setSuccess(List<AviationFlight> arr, List<AviationFlight> dep) {
+  void setSuccess(
+    List<AviationFlight> arr,
+    List<AviationFlight> dep, {
+    DateTime? updatedAt,
+  }) {
     status.value = 'success';
     arrivals.assignAll(arr);
     departures.assignAll(dep);
-    lastUpdated.value = DateTime.now();
+    lastUpdated.value = updatedAt ?? DateTime.now();
   }
 
   void setError(String message) {
@@ -35,27 +39,21 @@ class AirportState {
 }
 
 class AviationController extends GetxController {
-  final Dio _dio = Dio(
-    BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-    ),
-  );
-
+  final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
 
-  // Use a single active state for the selected station
   final activeAirport = AirportState();
+  final RxInt secondsUntilRefresh = 300.obs;
 
-  final RxInt secondsUntilRefresh = 1800.obs; // 30 minutes
   Timer? _refreshTimer;
   Timer? _countdownTimer;
+  int _refreshIntervalSeconds = 300;
 
   @override
   void onInit() {
     super.onInit();
-    fetchFlights();
     _startTimers();
+    fetchFlights();
   }
 
   @override
@@ -66,212 +64,99 @@ class AviationController extends GetxController {
   }
 
   void _startTimers() {
-    // 30 minutes = 1800 seconds
+    _refreshTimer?.cancel();
+    _countdownTimer?.cancel();
+    secondsUntilRefresh.value = _refreshIntervalSeconds;
+
     _refreshTimer = Timer.periodic(
-      const Duration(minutes: 30),
+      Duration(seconds: _refreshIntervalSeconds),
       (_) => fetchFlights(),
     );
+
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (secondsUntilRefresh.value > 0) {
         secondsUntilRefresh.value--;
       } else {
-        secondsUntilRefresh.value = 1800;
+        secondsUntilRefresh.value = _refreshIntervalSeconds;
       }
     });
   }
 
   Future<void> fetchFlights() async {
-    // Reset countdown on manual or auto refresh
-    secondsUntilRefresh.value = 1800;
+    secondsUntilRefresh.value = _refreshIntervalSeconds;
 
-    final stationCode = _session.activeStationCode;
-    // Fallback IATA can be anything, but we'll use JFK if none is selected
-    final iata = stationCode.isEmpty ? 'JFK' : stationCode;
-
-    try {
-      await _fetchAirportData(
-        iata,
-        activeAirport,
-      ).timeout(const Duration(seconds: 15));
-    } catch (e) {
-      if (activeAirport.status.value == 'loading') {
-        activeAirport.setError('Network request timed out.');
-      }
-    }
-  }
-
-  Future<void> _fetchAirportData(
-    String iata,
-    AirportState state, {
-    bool isRetry = false,
-  }) async {
-    state.setLoading();
-
-    try {
-      final Map<String, dynamic> params = {
-        'access_key': AviationStackConfig.apiKey,
-        'arr_iata': iata,
-        'limit': '100',
-      };
-
-      if (!isRetry) {
-        params['flight_status'] = 'active';
-      }
-
-      String url = AviationStackConfig.baseUrl;
-      Response response;
-
-      if (kIsWeb) {
-        final uri = Uri.parse(url).replace(queryParameters: params);
-        final proxyUrl =
-            'https://api.codetabs.com/v1/proxy/?quest=${Uri.encodeComponent(uri.toString())}';
-        response = await _dio
-            .get(proxyUrl)
-            .timeout(const Duration(seconds: 15));
-      } else {
-        response = await _dio
-            .get(url, queryParameters: params)
-            .timeout(const Duration(seconds: 15));
-      }
-
-      if (response.statusCode == 200) {
-        var data = response.data;
-        if (data is String) {
-          try {
-            data = jsonDecode(data);
-          } catch (e) {
-            throw Exception('Failed to parse API response: $e');
-          }
-        }
-
-        if (data is Map && data.containsKey('error')) {
-          final errorObj = data['error'];
-          final errorMsg = errorObj['message'] ?? 'API Error';
-          final errorCode = errorObj['code']?.toString() ?? '';
-
-          if (errorCode == 'invalid_access_key')
-            throw Exception('Invalid API Access Key.');
-          if (errorCode == 'usage_limit_reached')
-            throw Exception('Monthly Limit Reached.');
-          if (errorCode == 'function_access_restricted')
-            throw Exception('Plan restricted: Use HTTP, not HTTPS.');
-
-          throw Exception('API: $errorMsg ($errorCode)');
-        }
-
-        if (data is Map) {
-          final rawData = data['data'];
-          if (rawData is List) {
-            if (rawData.isEmpty && !isRetry) {
-              return _fetchAirportData(iata, state, isRetry: true);
-            }
-            _splitAndSetData(rawData, state, iata);
-            return;
-          }
-        }
-
-        if (!isRetry) return _fetchAirportData(iata, state, isRetry: true);
-        throw Exception('No data list in API response.');
-      } else {
-        throw Exception('Server Status: ${response.statusCode}');
-      }
-    } on DioException catch (e) {
-      String msg = 'Network Error';
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
-        msg = 'Connection Timed Out (Check Network)';
-      } else if (e.type == DioExceptionType.badResponse) {
-        msg = 'Invalid API Response (${e.response?.statusCode})';
-      } else if (e.message != null && e.message!.contains('XMLHttpRequest')) {
-        msg =
-            'CORS Blocked or Mixed Content. Use a proxy or disable web security for local testing.';
-      } else {
-        msg = e.message ?? 'Unknown Connection Error';
-      }
-      state.setError(msg);
-    } catch (e) {
-      state.setError(e.toString().replaceAll('Exception:', '').trim());
-    }
-  }
-
-  void _splitAndSetData(
-    List<dynamic> rawData,
-    AirportState state,
-    String iata,
-  ) {
-    final allFlights = <AviationFlight>[];
-    for (var item in rawData) {
-      try {
-        if (item is Map<String, dynamic>) {
-          allFlights.add(AviationFlight.fromJson(item));
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-
-    if (allFlights.isEmpty) {
-      state.setSuccess(const <AviationFlight>[], const <AviationFlight>[]);
+    if (_session.activeStationCode.isEmpty) {
+      activeAirport.setError('No active station selected.');
       return;
     }
 
-    final filtered = allFlights.where((f) {
-      return f.departureIata != "—" || f.arrivalIata != "—";
-    }).toList();
+    activeAirport.setLoading();
 
-    final deduplicated = <String, AviationFlight>{};
-    for (var f in allFlights) {
-      final flightNumber = f.flightNumber.trim();
-      if (flightNumber.isEmpty) {
-        continue;
+    try {
+      final response = await _api
+          .getStationFlights()
+          .timeout(const Duration(seconds: 20));
+
+      final arrivals = _parseFlights(response['arrivals']);
+      final departures = _parseFlights(response['departures']);
+      final cache = response['cache'];
+
+      if (cache is Map<String, dynamic>) {
+        final nextInterval = _readPositiveInt(cache['ttlSeconds']);
+        if (nextInterval != null && nextInterval != _refreshIntervalSeconds) {
+          _refreshIntervalSeconds = nextInterval;
+          _startTimers();
+        } else {
+          secondsUntilRefresh.value = _refreshIntervalSeconds;
+        }
+
+        activeAirport.setSuccess(
+          arrivals,
+          departures,
+          updatedAt: _parseDateTime(cache['fetchedAt']),
+        );
+        return;
       }
-      if (!deduplicated.containsKey(flightNumber)) {
-        deduplicated[flightNumber] = f;
-      }
+
+      activeAirport.setSuccess(arrivals, departures);
+    } on ApiException catch (error) {
+      activeAirport.setError(error.message);
+    } on TimeoutException {
+      activeAirport.setError('Flight request timed out.');
+    } catch (_) {
+      activeAirport.setError('Unable to load flights right now.');
     }
-
-    final normalizedIata = iata.trim().toUpperCase();
-    final result = deduplicated.values.toList();
-    final arrivals = result
-        .where(
-          (flight) => flight.arrivalIata.trim().toUpperCase() == normalizedIata,
-        )
-        .toList();
-    final departures = result
-        .where(
-          (flight) =>
-              flight.departureIata.trim().toUpperCase() == normalizedIata,
-        )
-        .toList();
-
-    _sortFlightsByTime(arrivals, selector: (flight) => flight.arrivalTime);
-    _sortFlightsByTime(departures, selector: (flight) => flight.departureTime);
-
-    state.setSuccess(arrivals, departures);
   }
 
-  void _sortFlightsByTime(
-    List<AviationFlight> flights, {
-    required DateTime? Function(AviationFlight flight) selector,
-  }) {
+  List<AviationFlight> _parseFlights(dynamic raw) {
+    if (raw is! List) {
+      return const <AviationFlight>[];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) => AviationFlight.fromApiJson(Map<String, dynamic>.from(item)))
+        .toList(growable: false);
+  }
+
+  int? _readPositiveInt(dynamic value) {
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed == null || parsed <= 0) {
+      return null;
+    }
+    return parsed;
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) {
+      return null;
+    }
+
     try {
-      flights.sort((a, b) {
-        final isAActive = a.status == 'active';
-        final isBActive = b.status == 'active';
-
-        if (isAActive && !isBActive) return -1;
-        if (!isAActive && isBActive) return 1;
-
-        final aTime = selector(a);
-        final bTime = selector(b);
-
-        if (aTime == null && bTime == null) return 0;
-        if (aTime == null) return 1;
-        if (bTime == null) return -1;
-        return aTime.compareTo(bTime);
-      });
-    } catch (e) {
-      // Sorting error doesn't crash the fetch
+      return DateTime.parse(raw).toLocal();
+    } catch (_) {
+      return null;
     }
   }
 

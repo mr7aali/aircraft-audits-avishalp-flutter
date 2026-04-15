@@ -232,6 +232,21 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> getStationFlights({
+    bool forceRefresh = false,
+    int? limit,
+  }) async {
+    final data = await _send(
+      'GET',
+      'flights/active',
+      queryParameters: {
+        if (forceRefresh) 'forceRefresh': true,
+        if (limit != null) 'limit': limit,
+      },
+    );
+    return _asMap(data);
+  }
+
   Future<List<Map<String, dynamic>>> getCleanTypes() async {
     final data = await _send('GET', 'master-data/clean-types');
     return _asListOfMaps(data);

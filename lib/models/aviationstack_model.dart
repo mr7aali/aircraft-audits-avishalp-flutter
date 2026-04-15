@@ -89,6 +89,40 @@ class AviationFlight {
     );
   }
 
+  factory AviationFlight.fromApiJson(Map<String, dynamic> json) {
+    DateTime? parseDateTime(dynamic raw) {
+      final value = raw?.toString().trim() ?? "";
+      if (value.isEmpty) return null;
+      try {
+        return DateTime.parse(value).toLocal();
+      } catch (_) {
+        return null;
+      }
+    }
+
+    String readString(String key, {String fallback = "N/A"}) {
+      final value = json[key]?.toString().trim() ?? "";
+      return value.isEmpty ? fallback : value;
+    }
+
+    return AviationFlight(
+      airlineName: readString('airlineName', fallback: "Unknown Airline"),
+      flightNumber: readString('flightNumber'),
+      departureAirport: readString('departureAirport'),
+      departureIata: readString('departureIata'),
+      departureTime: parseDateTime(json['departureTime']),
+      departureTerminal: readString('departureTerminal'),
+      departureGate: readString('departureGate'),
+      arrivalAirport: readString('arrivalAirport'),
+      arrivalIata: readString('arrivalIata'),
+      arrivalTime: parseDateTime(json['arrivalTime']),
+      arrivalTerminal: readString('arrivalTerminal'),
+      arrivalGate: readString('arrivalGate'),
+      status: readString('status', fallback: "unknown"),
+      shipNumber: readString('shipNumber'),
+    );
+  }
+
   // === Computed Properties / Formatting ===
 
   String get formattedDepartureTime {

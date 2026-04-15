@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AviationStackConfig {
-  static const String apiKey = '836d2c6172ea642389ea19a96d496f00';
-  static const String baseUrl = 'http://api.aviationstack.com/v1/flights';
-
   // Semantic Colors per Task 1
   static const Color departureColor = Color(0xFFB30E0E); // Vivid Amber
   static const Color arrivalColor = Color(0xFF16A34A); // Sky Blue
