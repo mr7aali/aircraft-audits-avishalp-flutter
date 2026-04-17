@@ -43,10 +43,9 @@ class AviationController extends GetxController {
   final SessionService _session = Get.find<SessionService>();
 
   final activeAirport = AirportState();
-  final RxInt secondsUntilRefresh = 0.obs;
+  final RxInt secondsUntilCacheExpiry = 0.obs;
 
-  Timer? _refreshTimer;
-  Timer? _countdownTimer;
+  Timer? _cacheCountdownTimer;
 
   @override
   void onInit() {
@@ -56,26 +55,19 @@ class AviationController extends GetxController {
 
   @override
   void onClose() {
-    _refreshTimer?.cancel();
-    _countdownTimer?.cancel();
+    _cacheCountdownTimer?.cancel();
     super.onClose();
   }
 
-  void _startTimers(int nextRefreshInSeconds) {
-    _refreshTimer?.cancel();
-    _countdownTimer?.cancel();
-    secondsUntilRefresh.value = nextRefreshInSeconds;
+  void _startCacheCountdown(int nextExpiryInSeconds) {
+    _cacheCountdownTimer?.cancel();
+    secondsUntilCacheExpiry.value = nextExpiryInSeconds;
 
-    _refreshTimer = Timer(
-      Duration(seconds: nextRefreshInSeconds),
-      fetchFlights,
-    );
-
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (secondsUntilRefresh.value > 0) {
-        secondsUntilRefresh.value--;
+    _cacheCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (secondsUntilCacheExpiry.value > 0) {
+        secondsUntilCacheExpiry.value--;
       } else {
-        _countdownTimer?.cancel();
+        _cacheCountdownTimer?.cancel();
       }
     });
   }
@@ -89,24 +81,25 @@ class AviationController extends GetxController {
     activeAirport.setLoading();
 
     try {
-      final response = await _api
-          .getStationFlights()
-          .timeout(const Duration(seconds: 20));
+      final response = await _api.getStationFlights().timeout(
+        const Duration(seconds: 20),
+      );
 
       final arrivals = _parseFlights(response['arrivals']);
       final departures = _parseFlights(response['departures']);
       final cache = response['cache'];
 
       if (cache is Map<String, dynamic>) {
-        final nextRefreshInSeconds =
+        final nextExpiryInSeconds =
             _readPositiveInt(cache['remainingSeconds']) ??
             _readPositiveInt(cache['ttlSeconds']) ??
             300;
 
-        if (nextRefreshInSeconds > 0) {
-          _startTimers(nextRefreshInSeconds);
+        if (nextExpiryInSeconds > 0) {
+          _startCacheCountdown(nextExpiryInSeconds);
         } else {
-          secondsUntilRefresh.value = 0;
+          _cacheCountdownTimer?.cancel();
+          secondsUntilCacheExpiry.value = 0;
         }
 
         activeAirport.setSuccess(
@@ -118,11 +111,19 @@ class AviationController extends GetxController {
       }
 
       activeAirport.setSuccess(arrivals, departures);
+      _cacheCountdownTimer?.cancel();
+      secondsUntilCacheExpiry.value = 0;
     } on ApiException catch (error) {
+      _cacheCountdownTimer?.cancel();
+      secondsUntilCacheExpiry.value = 0;
       activeAirport.setError(error.message);
     } on TimeoutException {
+      _cacheCountdownTimer?.cancel();
+      secondsUntilCacheExpiry.value = 0;
       activeAirport.setError('Flight request timed out.');
     } catch (_) {
+      _cacheCountdownTimer?.cancel();
+      secondsUntilCacheExpiry.value = 0;
       activeAirport.setError('Unable to load flights right now.');
     }
   }
@@ -134,7 +135,9 @@ class AviationController extends GetxController {
 
     return raw
         .whereType<Map>()
-        .map((item) => AviationFlight.fromApiJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => AviationFlight.fromApiJson(Map<String, dynamic>.from(item)),
+        )
         .toList(growable: false);
   }
 
