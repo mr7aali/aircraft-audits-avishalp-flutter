@@ -23,6 +23,7 @@ class AuditTab extends StatefulWidget {
 
 class _AuditTabState extends State<AuditTab> {
   final TextEditingController _searchController = TextEditingController();
+  late final AviationController _aviationController;
   String _searchQuery = '';
   String _statusFilter = 'all';
   bool _onlyWithGate = false;
@@ -31,6 +32,9 @@ class _AuditTabState extends State<AuditTab> {
   @override
   void initState() {
     super.initState();
+    _aviationController = Get.isRegistered<AviationController>()
+        ? Get.find<AviationController>()
+        : Get.put(AviationController());
     _searchController.addListener(_handleSearchChanged);
   }
 
@@ -429,7 +433,6 @@ class _AuditTabState extends State<AuditTab> {
   @override
   Widget build(BuildContext context) {
     final session = Get.find<SessionService>();
-    final aviation = Get.put(AviationController());
     final showLavSafety = session.hasPermission(
       AppPermissionCodes.lavSafetyObservation,
     );
@@ -447,7 +450,7 @@ class _AuditTabState extends State<AuditTab> {
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: aviation.fetchFlights,
+          onRefresh: _aviationController.fetchFlights,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
@@ -467,7 +470,7 @@ class _AuditTabState extends State<AuditTab> {
                   ),
                 ),
                 SizedBox(height: 8.h),
-                _buildRefreshHeader(aviation),
+                _buildRefreshHeader(_aviationController),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
@@ -479,7 +482,7 @@ class _AuditTabState extends State<AuditTab> {
                         session.activeStationCode.isEmpty
                             ? "JFK"
                             : session.activeStationCode,
-                        aviation.activeAirport,
+                        _aviationController.activeAirport,
                         showLavSafety,
                         showCabinQuality,
                         showCabinSecurity,
@@ -521,11 +524,18 @@ class _AuditTabState extends State<AuditTab> {
             ],
           ),
           Obx(() {
-            final totalSeconds = controller.secondsUntilRefresh.value;
+            final totalSeconds = controller.secondsUntilCacheExpiry.value;
             final minutes = totalSeconds ~/ 60;
             final seconds = totalSeconds % 60;
             final timeStr =
                 "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+            final hasFlightSnapshot =
+                controller.activeAirport.lastUpdated.value != null;
+            final badgeLabel = totalSeconds > 0
+                ? "Cache expires in $timeStr"
+                : hasFlightSnapshot
+                ? "Cache expired"
+                : "Waiting for cache";
 
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -534,7 +544,7 @@ class _AuditTabState extends State<AuditTab> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                "Refreshing in $timeStr",
+                badgeLabel,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 11.sp,
                   color: const Color(0xFF1E293B),

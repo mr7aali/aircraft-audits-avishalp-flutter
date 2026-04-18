@@ -183,9 +183,9 @@ class _FlightCardState extends State<FlightCard> {
       children: [
         Expanded(
           child: _buildInfoGroup(
-            label: "ARRIVAL",
-            value: "${widget.flight.arrivalIata} ${widget.flight.formattedArrivalTime}",
-            color: AviationStackConfig.arrivalColor,
+            label: "DEPARTURE",
+            value: "${widget.flight.departureIata} ${widget.flight.formattedDepartureTime}",
+            color: AviationStackConfig.departureColor,
           ),
         ),
         Padding(
@@ -198,9 +198,9 @@ class _FlightCardState extends State<FlightCard> {
         ),
         Expanded(
           child: _buildInfoGroup(
-            label: "DEPARTURE",
-            value: "${widget.flight.departureIata} ${widget.flight.formattedDepartureTime}",
-            color: AviationStackConfig.departureColor,
+            label: "ARRIVAL",
+            value: "${widget.flight.arrivalIata} ${widget.flight.formattedArrivalTime}",
+            color: AviationStackConfig.arrivalColor,
             crossAxisAlignment: CrossAxisAlignment.end,
           ),
         ),
