@@ -241,7 +241,7 @@ class AppApiService {
       'flights/active',
       queryParameters: {
         if (forceRefresh) 'forceRefresh': true,
-        if (limit != null) 'limit': limit,
+        if (limit case final int value) 'limit': value,
       },
     );
     return _asMap(data);
@@ -287,6 +287,32 @@ class AppApiService {
       queryParameters: {'stationId': stationId},
     );
     return _asListOfMaps(data);
+  }
+
+  Future<List<Map<String, dynamic>>> listPublishedDynamicForms() async {
+    final data = await _send('GET', 'dynamic-forms/published');
+    return _asListOfMaps(data);
+  }
+
+  Future<Map<String, dynamic>> getPublishedDynamicForm(String formId) async {
+    final data = await _send('GET', 'dynamic-forms/published/$formId');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> submitPublishedDynamicForm(
+    String formId, {
+    required Map<String, dynamic> answers,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final data = await _send(
+      'POST',
+      'dynamic-forms/published/$formId/submissions',
+      body: <String, dynamic>{
+        'answers': answers,
+        if (metadata case final Map<String, dynamic> value) 'metadata': value,
+      },
+    );
+    return _asMap(data);
   }
 
   Future<CloudinarySignedUploadPayload>
