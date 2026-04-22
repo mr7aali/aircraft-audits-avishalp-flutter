@@ -8,6 +8,7 @@ import 'home_tab.dart';
 import 'audit_tab.dart';
 import 'quick_start_tab.dart';
 import 'profile_tab.dart';
+import '../widgets/app_drawer.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -39,6 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
+      drawer: const AppDrawer(),
       body: SafeArea(
         top: true,
         bottom: false,

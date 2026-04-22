@@ -1,4 +1,4 @@
-import 'package:avislap/services/session_service.dart';
+  import 'package:avislap/services/session_service.dart';
 import 'package:avislap/config/app_permission_codes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -19,9 +19,9 @@ class HomeTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = Get.find<SessionService>();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SingleChildScrollView(
+    return Container(
+      color: const Color(0xFFF8FAFC),
+      child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -262,11 +262,22 @@ class _HeroSection extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 40.h),
       decoration: BoxDecoration(
-        color: AppColors.mainAppColor,
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFF0F172A), Color(0xFF2563EB)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(36.r),
           bottomRight: Radius.circular(36.r),
         ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: const Color(0xFF2563EB).withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: SafeArea(
         top: true,
@@ -276,6 +287,15 @@ class _HeroSection extends StatelessWidget {
             Stack(
               alignment: Alignment.center,
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    icon: const Icon(Icons.menu, color: Colors.white),
+                    onPressed: () {
+                      Scaffold.of(context).openDrawer();
+                    },
+                  ),
+                ),
                 Image.asset(
                   'assets/images/custom_logo.png',
                   height: 52.h,
