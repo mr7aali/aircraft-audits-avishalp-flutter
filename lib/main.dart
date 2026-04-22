@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:avislap/healper/route.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -9,18 +12,38 @@ import 'services/app_api_service.dart';
 import 'services/session_service.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await AppEnv.load();
-  await GetStorage.init();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint(
+      '[APP][FlutterError] ${details.exceptionAsString()}'
+      '${details.stack == null ? '' : '\n${details.stack}'}',
+    );
+  };
 
-  final sessionService = await SessionService().init();
-  Get.put<SessionService>(sessionService, permanent: true);
-  Get.put<AppApiService>(
-    AppApiService(sessionService: sessionService),
-    permanent: true,
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('[APP][PlatformError] $error\n$stack');
+    return true;
+  };
+
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      await AppEnv.load();
+      await GetStorage.init();
+
+      final sessionService = await SessionService().init();
+      Get.put<SessionService>(sessionService, permanent: true);
+      Get.put<AppApiService>(
+        AppApiService(sessionService: sessionService),
+        permanent: true,
+      );
+
+      runApp(const MyApp());
+    },
+    (error, stack) {
+      debugPrint('[APP][ZoneError] $error\n$stack');
+    },
   );
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {

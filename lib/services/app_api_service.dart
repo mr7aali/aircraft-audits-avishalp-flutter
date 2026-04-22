@@ -241,7 +241,7 @@ class AppApiService {
       'flights/active',
       queryParameters: {
         if (forceRefresh) 'forceRefresh': true,
-        if (limit != null) 'limit': limit,
+        if (limit case final int value) 'limit': value,
       },
     );
     return _asMap(data);
@@ -287,6 +287,32 @@ class AppApiService {
       queryParameters: {'stationId': stationId},
     );
     return _asListOfMaps(data);
+  }
+
+  Future<List<Map<String, dynamic>>> listPublishedDynamicForms() async {
+    final data = await _send('GET', 'dynamic-forms/published');
+    return _asListOfMaps(data);
+  }
+
+  Future<Map<String, dynamic>> getPublishedDynamicForm(String formId) async {
+    final data = await _send('GET', 'dynamic-forms/published/$formId');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> submitPublishedDynamicForm(
+    String formId, {
+    required Map<String, dynamic> answers,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final data = await _send(
+      'POST',
+      'dynamic-forms/published/$formId/submissions',
+      body: <String, dynamic>{
+        'answers': answers,
+        if (metadata case final Map<String, dynamic> value) 'metadata': value,
+      },
+    );
+    return _asMap(data);
   }
 
   Future<CloudinarySignedUploadPayload>
@@ -595,6 +621,14 @@ class AppApiService {
       }
     }
 
+    _logRequest(
+      method: method,
+      uri: uri,
+      queryParameters: queryParameters,
+      body: body,
+      authenticated: authenticated,
+    );
+
     http.Response response;
     try {
       switch (method.toUpperCase()) {
@@ -620,7 +654,13 @@ class AppApiService {
         default:
           throw ApiException('Unsupported request method: $method');
       }
+      _logResponse(method: method, uri: uri, response: response);
     } on SocketException {
+      _logTransportError(
+        method: method,
+        uri: uri,
+        error: 'SocketException: Unable to reach backend',
+      );
       final baseUri = Uri.tryParse(baseUrl);
       final reachableHost = baseUri == null
           ? baseUrl
@@ -632,7 +672,8 @@ class AppApiService {
       throw ApiException(
         'Unable to reach the backend at $reachableHost. Check the API base URL and server status.$androidHint',
       );
-    } on HttpException {
+    } on HttpException catch (error) {
+      _logTransportError(method: method, uri: uri, error: error.toString());
       throw const ApiException(
         'Unable to complete the request because the server connection failed.',
       );
@@ -642,6 +683,9 @@ class AppApiService {
         authenticated &&
         retryOnUnauthorized &&
         await _refreshAccessToken()) {
+      _logInfo(
+        '[API][RETRY] ${method.toUpperCase()} $uri -> retrying after token refresh',
+      );
       return _send(
         method,
         endpoint,
@@ -653,7 +697,132 @@ class AppApiService {
     }
 
     final parsed = _decodeResponse(response.body);
-    return _unwrapResponse(response.statusCode, parsed);
+    try {
+      return _unwrapResponse(response.statusCode, parsed);
+    } on ApiException catch (error) {
+      _logApiError(
+        method: method,
+        uri: uri,
+        error: error,
+        responseBody: parsed,
+      );
+      rethrow;
+    }
+  }
+
+  void _logRequest({
+    required String method,
+    required Uri uri,
+    Map<String, dynamic>? queryParameters,
+    Map<String, dynamic>? body,
+    required bool authenticated,
+  }) {
+    final summary = <String>[
+      '[API][REQUEST] ${method.toUpperCase()} $uri',
+      'auth=${authenticated ? 'on' : 'off'}',
+      if (queryParameters != null && queryParameters.isNotEmpty)
+        'query=${_stringifyForLog(queryParameters)}',
+      if (body != null && body.isNotEmpty) 'body=${_stringifyForLog(body)}',
+    ].join(' | ');
+    _logInfo(summary);
+  }
+
+  void _logResponse({
+    required String method,
+    required Uri uri,
+    required http.Response response,
+  }) {
+    final responseBody = response.body.trim();
+    final summary = <String>[
+      '[API][RESPONSE] ${method.toUpperCase()} $uri',
+      'status=${response.statusCode}',
+      if (responseBody.isNotEmpty) 'body=${_truncate(responseBody)}',
+    ].join(' | ');
+    _logInfo(summary);
+  }
+
+  void _logApiError({
+    required String method,
+    required Uri uri,
+    required ApiException error,
+    dynamic responseBody,
+  }) {
+    final summary = <String>[
+      '[API][ERROR] ${method.toUpperCase()} $uri',
+      if (error.statusCode != null) 'status=${error.statusCode}',
+      if (error.code?.isNotEmpty ?? false) 'code=${error.code}',
+      'message=${error.message.replaceAll('\n', ' | ')}',
+      if (responseBody != null)
+        'response=${_stringifyForLog(responseBody, isErrorPayload: true)}',
+    ].join(' | ');
+    _logInfo(summary);
+  }
+
+  void _logTransportError({
+    required String method,
+    required Uri uri,
+    required String error,
+  }) {
+    _logInfo('[API][TRANSPORT] ${method.toUpperCase()} $uri | $error');
+  }
+
+  void _logInfo(String message) {
+    debugPrint(message);
+  }
+
+  String _stringifyForLog(dynamic value, {bool isErrorPayload = false}) {
+    try {
+      if (value is Map) {
+        final sanitized = value.map<String, dynamic>((key, entry) {
+          final normalizedKey = key.toString().toLowerCase();
+          if (_isSensitiveKey(normalizedKey)) {
+            return MapEntry(key.toString(), '***');
+          }
+          return MapEntry(key.toString(), entry);
+        });
+        return _truncate(jsonEncode(sanitized));
+      }
+      if (value is List) {
+        return _truncate(jsonEncode(value));
+      }
+      final text = value?.toString() ?? '';
+      return isErrorPayload
+          ? _truncate(text)
+          : _truncate(_maskSensitiveText(text));
+    } catch (_) {
+      return _truncate(value?.toString() ?? '');
+    }
+  }
+
+  bool _isSensitiveKey(String key) {
+    return key.contains('password') ||
+        key.contains('token') ||
+        key.contains('authorization') ||
+        key.contains('signature') ||
+        key.contains('api_key');
+  }
+
+  String _maskSensitiveText(String text) {
+    return text
+        .replaceAllMapped(
+          RegExp(
+            r'"(password|token|authorization|signature|api_key)"\s*:\s*"[^"]*"',
+            caseSensitive: false,
+          ),
+          (match) => '"${match.group(1)}":"***"',
+        )
+        .replaceAllMapped(
+          RegExp(r'(Bearer)\s+[A-Za-z0-9\-._~+/]+=*', caseSensitive: false),
+          (_) => 'Bearer ***',
+        );
+  }
+
+  String _truncate(String value, {int maxLength = 500}) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxLength)}...';
   }
 
   dynamic _decodeResponse(String body) {
