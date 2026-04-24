@@ -7,6 +7,7 @@ import '../../healper/route.dart';
 import '../../services/app_api_service.dart';
 import '../../services/session_service.dart';
 import '../../utils/app_colors.dart';
+import '../audits/my_audits_screen.dart';
 
 class AppDrawer extends StatefulWidget {
   final VoidCallback? onDashboardTap;
@@ -131,13 +132,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   title: 'My Audits',
                   onTap: () {
                     Get.back();
-                    Get.snackbar(
-                      'Coming Soon',
-                      'Audit history will be available soon.',
-                      snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: Colors.black87,
-                      colorText: Colors.white,
-                    );
+                    Get.to(() => const MyAuditsScreen());
                   },
                 ),
                 DrawerTile(
