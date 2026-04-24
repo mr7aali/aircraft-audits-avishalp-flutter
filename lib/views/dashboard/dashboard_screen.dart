@@ -1,9 +1,10 @@
-
 import 'package:avislap/views/inbox/inbox_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:motion_tab_bar/MotionTabBar.dart';
 import 'package:motion_tab_bar/MotionTabBarController.dart';
 import '../../utils/app_colors.dart';
+import 'audit_operations_tab.dart';
 import 'home_tab.dart';
 import 'audit_tab.dart';
 import 'quick_start_tab.dart';
@@ -17,8 +18,15 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
   MotionTabBarController? _motionTabBarController;
+
+  void _selectTab(int index) {
+    setState(() {
+      _motionTabBarController!.index = index;
+    });
+  }
 
   @override
   void initState() {
@@ -40,7 +48,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
-      drawer: const AppDrawer(),
+      drawer: AppDrawer(
+        onDashboardTap: () => _selectTab(0),
+        onProfileTap: () => Get.to(() => const ProfileTab()),
+      ),
       body: SafeArea(
         top: true,
         bottom: false,
@@ -53,7 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             AuditTab(),
             QuickStartTab(),
             InboxScreen(),
-            ProfileTab(),
+            AuditOperationsTab(),
           ],
         ),
       ),
@@ -61,13 +72,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         controller: _motionTabBarController,
         initialSelectedTab: "Home",
         useSafeArea: true,
-        labels: const ["Home", "Audit", "Quick Start", "Chat", "Profile"],
+        labels: const ["Home", "Audit", "Quick Start", "Chat", "Ops"],
         icons: const [
           Icons.home_outlined,
           Icons.assignment_outlined,
           Icons.flash_on_outlined,
           Icons.chat_bubble_outline,
-          Icons.person_outline,
+          Icons.manage_search_outlined,
         ],
         badges: const [null, null, null, null, null],
         tabSize: 50,
@@ -84,9 +95,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         tabIconSelectedColor: Colors.white,
         tabBarColor: Colors.white,
         onTabItemSelected: (int value) {
-          setState(() {
-            _motionTabBarController!.index = value;
-          });
+          _selectTab(value);
         },
       ),
     );

@@ -152,6 +152,40 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> getAdminOverview({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'admin-dashboard/overview',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getAdminAuditRecords({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'admin-dashboard/audit-records',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getAdminAuditDetail({
+    required String id,
+    required String type,
+  }) async {
+    final data = await _send(
+      'GET',
+      'admin-dashboard/audit-detail',
+      queryParameters: {'id': id, 'type': type},
+    );
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> updateMyProfile(
     Map<String, dynamic> payload,
   ) async {
