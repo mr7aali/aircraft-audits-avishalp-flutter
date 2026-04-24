@@ -1,4 +1,3 @@
-
 import 'package:avislap/views/inbox/inbox_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:motion_tab_bar/MotionTabBar.dart';
@@ -17,8 +16,15 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
   MotionTabBarController? _motionTabBarController;
+
+  void _selectTab(int index) {
+    setState(() {
+      _motionTabBarController!.index = index;
+    });
+  }
 
   @override
   void initState() {
@@ -40,7 +46,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
-      drawer: const AppDrawer(),
+      drawer: AppDrawer(
+        onDashboardTap: () => _selectTab(0),
+        onProfileTap: () => _selectTab(4),
+      ),
       body: SafeArea(
         top: true,
         bottom: false,
@@ -84,9 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         tabIconSelectedColor: Colors.white,
         tabBarColor: Colors.white,
         onTabItemSelected: (int value) {
-          setState(() {
-            _motionTabBarController!.index = value;
-          });
+          _selectTab(value);
         },
       ),
     );
