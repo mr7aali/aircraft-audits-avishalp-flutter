@@ -46,10 +46,10 @@ class AppApiService {
     );
 
     final defaultHost = kReleaseMode
-        ? 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api'
+        ? 'https://showing-whenever-presently-correction.trycloudflare.com/api'
         : !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-        ? 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api'
-        : 'https://butterfly-chapters-scotland-merge.trycloudflare.com/api';
+        ? 'https://showing-whenever-presently-correction.trycloudflare.com/api'
+        : 'https://showing-whenever-presently-correction.trycloudflare.com/api';
     return _normalizeBaseUrl(defaultHost);
   }
 
