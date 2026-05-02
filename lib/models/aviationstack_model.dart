@@ -1,6 +1,8 @@
 import 'package:intl/intl.dart';
 
 class AviationFlight {
+  final String id;
+  final String direction;
   final String airlineName;
   final String flightNumber;
   final String departureAirport;
@@ -19,6 +21,8 @@ class AviationFlight {
   final String shipNumber;
 
   AviationFlight({
+    required this.id,
+    required this.direction,
     required this.airlineName,
     required this.flightNumber,
     required this.departureAirport,
@@ -67,23 +71,25 @@ class AviationFlight {
         : (strIcao.isNotEmpty ? strIcao : "N/A");
 
     return AviationFlight(
+      id: parsedFlightNumber,
+      direction: "arrival",
       airlineName: airline['name']?.toString() ?? "Unknown Airline",
       flightNumber: parsedFlightNumber,
-      
+
       // Departure fields
       departureAirport: departure['airport']?.toString() ?? "N/A",
       departureIata: departure['iata']?.toString() ?? "—",
       departureTime: parseDateTime(departure['scheduled']?.toString()),
       departureTerminal: departure['terminal']?.toString() ?? "—",
       departureGate: departure['gate']?.toString() ?? "—",
-      
+
       // Arrival fields
       arrivalAirport: arrival['airport']?.toString() ?? "N/A",
       arrivalIata: arrival['iata']?.toString() ?? "—",
       arrivalTime: parseDateTime(arrival['scheduled']?.toString()),
       arrivalTerminal: arrival['terminal']?.toString() ?? "—",
       arrivalGate: arrival['gate']?.toString() ?? "—",
-      
+
       status: json['flight_status']?.toString() ?? "unknown",
       shipNumber: aircraft['registration']?.toString() ?? "N/A",
     );
@@ -106,6 +112,8 @@ class AviationFlight {
     }
 
     return AviationFlight(
+      id: readString('id', fallback: readString('flightNumber')),
+      direction: readString('direction', fallback: "arrival").toLowerCase(),
       airlineName: readString('airlineName', fallback: "Unknown Airline"),
       flightNumber: readString('flightNumber'),
       departureAirport: readString('departureAirport'),
@@ -123,6 +131,20 @@ class AviationFlight {
     );
   }
 
+  bool get isDeparture => direction.toLowerCase() == 'departure';
+
+  bool get isArrival => !isDeparture;
+
+  String get operationalTerminal =>
+      isDeparture ? departureTerminal : arrivalTerminal;
+
+  String get operationalGate => isDeparture ? departureGate : arrivalGate;
+
+  DateTime? get operationalTime => isDeparture ? departureTime : arrivalTime;
+
+  String get formattedOperationalTime =>
+      isDeparture ? formattedDepartureTime : formattedArrivalTime;
+
   // === Computed Properties / Formatting ===
 
   String get formattedDepartureTime {
@@ -139,7 +161,7 @@ class AviationFlight {
   String get relativeDepartureLabel {
     if (departureTime == null) return "";
     final diff = departureTime!.difference(DateTime.now());
-    
+
     if (diff.isNegative) return "Departed";
 
     final inMinutes = diff.inMinutes;
