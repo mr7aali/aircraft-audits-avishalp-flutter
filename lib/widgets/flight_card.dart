@@ -9,11 +9,7 @@ class FlightCard extends StatefulWidget {
   final AviationFlight flight;
   final VoidCallback? onStartAudit;
 
-  const FlightCard({
-    super.key,
-    required this.flight,
-    this.onStartAudit,
-  });
+  const FlightCard({super.key, required this.flight, this.onStartAudit});
 
   @override
   State<FlightCard> createState() => _FlightCardState();
@@ -37,18 +33,22 @@ class _FlightCardState extends State<FlightCard> {
             borderRadius: BorderRadius.circular(20.r),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 15.r,
                 spreadRadius: 2.r,
                 offset: const Offset(0, 4),
               ),
               if (_isHovered)
                 BoxShadow(
-                  color: AviationStackConfig.departureColor.withOpacity(0.15),
+                  color:
+                      (widget.flight.isDeparture
+                              ? AviationStackConfig.departureColor
+                              : AviationStackConfig.arrivalColor)
+                          .withValues(alpha: 0.15),
                   blurRadius: 20.r,
                   spreadRadius: 0,
                   offset: const Offset(0, 8),
-                )
+                ),
             ],
           ),
           child: ClipRRect(
@@ -62,7 +62,10 @@ class _FlightCardState extends State<FlightCard> {
                   borderRadius: BorderRadius.circular(20.r),
                   border: Border.all(
                     color: _isHovered
-                        ? AviationStackConfig.departureColor.withOpacity(0.4)
+                        ? (widget.flight.isDeparture
+                                  ? AviationStackConfig.departureColor
+                                  : AviationStackConfig.arrivalColor)
+                              .withValues(alpha: 0.4)
                         : const Color(0xFFE2E8F0), // Light gray border
                     width: 1.5,
                   ),
@@ -74,7 +77,9 @@ class _FlightCardState extends State<FlightCard> {
                       Container(
                         width: 4.w,
                         decoration: BoxDecoration(
-                          color: AviationStackConfig.start,
+                          color: widget.flight.isDeparture
+                              ? AviationStackConfig.departureColor
+                              : AviationStackConfig.arrivalColor,
                           borderRadius: BorderRadius.circular(2.r),
                         ),
                       ),
@@ -122,6 +127,8 @@ class _FlightCardState extends State<FlightCard> {
         ),
         _buildFlightNumberBadge(),
         SizedBox(width: 8.w),
+        _buildMovementBadge(),
+        SizedBox(width: 8.w),
         _buildStatusBadge(),
       ],
     );
@@ -145,10 +152,35 @@ class _FlightCardState extends State<FlightCard> {
     );
   }
 
+  Widget _buildMovementBadge() {
+    final isDeparture = widget.flight.isDeparture;
+    final color = isDeparture
+        ? AviationStackConfig.departureColor
+        : AviationStackConfig.arrivalColor;
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(100.r),
+      ),
+      child: Icon(
+        isDeparture ? Icons.flight_takeoff_rounded : Icons.flight_land_rounded,
+        size: 16,
+        color: color,
+      ),
+    );
+  }
+
   Widget _buildStatusBadge() {
     Color statusColor;
     switch (widget.flight.status.toLowerCase()) {
       case 'active':
+      case 'scheduled':
+      case 'approaching':
+      case 'landed':
+      case 'on-ground':
+      case 'departed':
         statusColor = AviationStackConfig.statusActive;
         break;
       case 'delayed':
@@ -169,7 +201,7 @@ class _FlightCardState extends State<FlightCard> {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: statusColor.withOpacity(0.5),
+            color: statusColor.withValues(alpha: 0.5),
             blurRadius: 6,
             spreadRadius: 2,
           ),
@@ -184,7 +216,8 @@ class _FlightCardState extends State<FlightCard> {
         Expanded(
           child: _buildInfoGroup(
             label: "DEPARTURE",
-            value: "${widget.flight.departureIata} ${widget.flight.formattedDepartureTime}",
+            value:
+                "${widget.flight.departureIata} ${widget.flight.formattedDepartureTime}",
             color: AviationStackConfig.departureColor,
           ),
         ),
@@ -199,7 +232,8 @@ class _FlightCardState extends State<FlightCard> {
         Expanded(
           child: _buildInfoGroup(
             label: "ARRIVAL",
-            value: "${widget.flight.arrivalIata} ${widget.flight.formattedArrivalTime}",
+            value:
+                "${widget.flight.arrivalIata} ${widget.flight.formattedArrivalTime}",
             color: AviationStackConfig.arrivalColor,
             crossAxisAlignment: CrossAxisAlignment.end,
           ),
@@ -214,14 +248,14 @@ class _FlightCardState extends State<FlightCard> {
         Expanded(
           child: _buildInfoGroup(
             label: "TERMINAL",
-            value: widget.flight.arrivalTerminal,
+            value: widget.flight.operationalTerminal,
             color: AviationStackConfig.terminalColor,
           ),
         ),
         Expanded(
           child: _buildInfoGroup(
             label: "GATE",
-            value: widget.flight.arrivalGate,
+            value: widget.flight.operationalGate,
             color: AviationStackConfig.gateColor,
           ),
         ),
@@ -274,7 +308,7 @@ class _FlightCardState extends State<FlightCard> {
       child: ElevatedButton(
         onPressed: widget.onStartAudit,
         style: ElevatedButton.styleFrom(
-          backgroundColor: AviationStackConfig.start.withOpacity(0.1),
+          backgroundColor: AviationStackConfig.start.withValues(alpha: 0.1),
           foregroundColor: AviationStackConfig.start,
           elevation: 0,
           shape: RoundedRectangleBorder(

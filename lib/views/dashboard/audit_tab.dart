@@ -28,6 +28,7 @@ class _AuditTabState extends State<AuditTab> {
   String _statusFilter = 'all';
   bool _onlyWithGate = false;
   String _sortOption = 'arrival_asc';
+  String _selectedMovement = 'departure';
 
   @override
   void initState() {
@@ -77,7 +78,9 @@ class _AuditTabState extends State<AuditTab> {
       flight.airlineName,
       flight.shipNumber,
       flight.arrivalGate,
+      flight.departureGate,
       flight.arrivalTerminal,
+      flight.departureTerminal,
       flight.arrivalAirport,
       flight.arrivalIata,
       flight.departureAirport,
@@ -90,6 +93,10 @@ class _AuditTabState extends State<AuditTab> {
 
   List<AviationFlight> _applyFilters(List<AviationFlight> flights) {
     final filtered = flights.where((flight) {
+      if (flight.direction.toLowerCase() != _selectedMovement) {
+        return false;
+      }
+
       if (!_matchesSearch(flight, _searchQuery)) {
         return false;
       }
@@ -99,7 +106,7 @@ class _AuditTabState extends State<AuditTab> {
         return false;
       }
 
-      if (_onlyWithGate && !_hasRealGate(flight.arrivalGate)) {
+      if (_onlyWithGate && !_hasRealGate(flight.operationalGate)) {
         return false;
       }
 
@@ -109,8 +116,8 @@ class _AuditTabState extends State<AuditTab> {
     filtered.sort((a, b) {
       switch (_sortOption) {
         case 'arrival_desc':
-          final aTime = a.arrivalTime;
-          final bTime = b.arrivalTime;
+          final aTime = a.operationalTime;
+          final bTime = b.operationalTime;
           if (aTime == null && bTime == null) return 0;
           if (aTime == null) return 1;
           if (bTime == null) return -1;
@@ -125,8 +132,8 @@ class _AuditTabState extends State<AuditTab> {
           );
         case 'arrival_asc':
         default:
-          final aTime = a.arrivalTime;
-          final bTime = b.arrivalTime;
+          final aTime = a.operationalTime;
+          final bTime = b.operationalTime;
           if (aTime == null && bTime == null) return 0;
           if (aTime == null) return 1;
           if (bTime == null) return -1;
@@ -279,9 +286,33 @@ class _AuditTabState extends State<AuditTab> {
                         onTap: () => setModalState(() => tempStatus = 'all'),
                       ),
                       buildChoiceChip(
-                        label: 'Active',
-                        selected: tempStatus == 'active',
-                        onTap: () => setModalState(() => tempStatus = 'active'),
+                        label: 'Scheduled',
+                        selected: tempStatus == 'scheduled',
+                        onTap: () =>
+                            setModalState(() => tempStatus = 'scheduled'),
+                      ),
+                      buildChoiceChip(
+                        label: 'Approaching',
+                        selected: tempStatus == 'approaching',
+                        onTap: () =>
+                            setModalState(() => tempStatus = 'approaching'),
+                      ),
+                      buildChoiceChip(
+                        label: 'On Ground',
+                        selected: tempStatus == 'on-ground',
+                        onTap: () =>
+                            setModalState(() => tempStatus = 'on-ground'),
+                      ),
+                      buildChoiceChip(
+                        label: 'Landed',
+                        selected: tempStatus == 'landed',
+                        onTap: () => setModalState(() => tempStatus = 'landed'),
+                      ),
+                      buildChoiceChip(
+                        label: 'Departed',
+                        selected: tempStatus == 'departed',
+                        onTap: () =>
+                            setModalState(() => tempStatus = 'departed'),
                       ),
                       buildChoiceChip(
                         label: 'Delayed',
@@ -334,7 +365,7 @@ class _AuditTabState extends State<AuditTab> {
                               ),
                               SizedBox(height: 2.h),
                               Text(
-                                'Hide inbound flights that do not have an arrival gate yet.',
+                                'Hide flights that do not have a gate for the selected tab yet.',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11.sp,
                                   fontWeight: FontWeight.w500,
@@ -348,7 +379,7 @@ class _AuditTabState extends State<AuditTab> {
                           value: tempOnlyWithGate,
                           onChanged: (value) =>
                               setModalState(() => tempOnlyWithGate = value),
-                          activeColor: const Color(0xFF0F766E),
+                          activeThumbColor: const Color(0xFF0F766E),
                         ),
                       ],
                     ),
@@ -366,7 +397,7 @@ class _AuditTabState extends State<AuditTab> {
                   Wrap(
                     children: [
                       buildChoiceChip(
-                        label: 'Arrival Time',
+                        label: 'Time',
                         selected: tempSort == 'arrival_asc',
                         onTap: () =>
                             setModalState(() => tempSort = 'arrival_asc'),
@@ -540,7 +571,7 @@ class _AuditTabState extends State<AuditTab> {
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B).withOpacity(0.05),
+                color: const Color(0xFF1E293B).withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -576,13 +607,13 @@ class _AuditTabState extends State<AuditTab> {
             Row(
               children: [
                 const Icon(
-                  Icons.flight_land,
+                  Icons.connecting_airports_rounded,
                   color: Color(0xFF64748B),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  "Flights arriving at $iata",
+                  "$iata Flight Audits",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w800,
@@ -600,11 +631,11 @@ class _AuditTabState extends State<AuditTab> {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3B82F6).withOpacity(0.1),
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    "${state.allFlights.length} flights",
+                    "${state.departures.length} dep / ${state.arrivals.length} arr",
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w700,
@@ -617,6 +648,8 @@ class _AuditTabState extends State<AuditTab> {
             }),
           ],
         ),
+        SizedBox(height: 14.h),
+        _buildMovementTabs(state),
         Obx(() {
           if (state.status.value == 'error' && state.allFlights.isEmpty) {
             return _buildErrorPlaceholder(state.error.value ?? "Unknown error");
@@ -638,15 +671,115 @@ class _AuditTabState extends State<AuditTab> {
     );
   }
 
+  Widget _buildMovementTabs(AirportState state) {
+    return Obx(() {
+      Widget buildTab({
+        required String value,
+        required String label,
+        required IconData icon,
+        required int count,
+      }) {
+        final selected = _selectedMovement == value;
+        return Expanded(
+          child: InkWell(
+            onTap: () => setState(() => _selectedMovement = value),
+            borderRadius: BorderRadius.circular(16.r),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                color: selected ? const Color(0xFF0F172A) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: selected ? Colors.white : const Color(0xFF64748B),
+                  ),
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w800,
+                        color: selected
+                            ? Colors.white
+                            : const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.16)
+                          : const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w800,
+                        color: selected
+                            ? Colors.white
+                            : const Color(0xFF475569),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
+      return Container(
+        padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20.r),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            buildTab(
+              value: 'departure',
+              label: 'Departures',
+              icon: Icons.flight_takeoff_rounded,
+              count: state.departures.length,
+            ),
+            SizedBox(width: 4.w),
+            buildTab(
+              value: 'arrival',
+              label: 'Arrivals',
+              icon: Icons.flight_land_rounded,
+              count: state.arrivals.length,
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
   Widget _buildErrorPlaceholder(String error) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.05),
+        color: Colors.red.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.withOpacity(0.1)),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [
@@ -669,7 +802,10 @@ class _AuditTabState extends State<AuditTab> {
 
   Widget _buildSearchAndFilterBar(BuildContext context, AirportState state) {
     return Obx(() {
-      final totalFlights = state.allFlights.length;
+      final activeFlights = _selectedMovement == 'departure'
+          ? state.departures
+          : state.arrivals;
+      final totalFlights = activeFlights.length;
       final visibleFlights = _applyFilters(state.allFlights);
       final activeCount = _activeFilterCount();
 
@@ -684,7 +820,7 @@ class _AuditTabState extends State<AuditTab> {
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0F172A).withOpacity(0.04),
+                  color: const Color(0xFF0F172A).withValues(alpha: 0.04),
                   blurRadius: 18,
                   offset: const Offset(0, 10),
                 ),
@@ -763,7 +899,7 @@ class _AuditTabState extends State<AuditTab> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.18),
+                              color: Colors.white.withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
@@ -880,6 +1016,9 @@ class _AuditTabState extends State<AuditTab> {
     BuildContext context,
   ) {
     return Obx(() {
+      final activeFlights = _selectedMovement == 'departure'
+          ? state.departures
+          : state.arrivals;
       final filteredFlights = _applyFilters(state.allFlights);
 
       if (state.status.value == 'loading' && state.allFlights.isEmpty) {
@@ -907,6 +1046,40 @@ class _AuditTabState extends State<AuditTab> {
                 const SizedBox(height: 4),
                 Text(
                   "API returned no data for this airport.",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12.sp,
+                    color: Colors.grey[400],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      if (activeFlights.isEmpty) {
+        final label = _selectedMovement == 'departure'
+            ? 'departures'
+            : 'arrivals';
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Column(
+              children: [
+                Icon(Icons.flight_outlined, size: 48, color: Colors.grey[300]),
+                const SizedBox(height: 12),
+                Text(
+                  "No $label found",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15.sp,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "Try refreshing or checking another time window.",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12.sp,
                     color: Colors.grey[400],
@@ -1061,7 +1234,7 @@ class _AuditTabState extends State<AuditTab> {
                   Get.to(
                     () => LAVSafetyScreen(
                       initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.arrivalGate,
+                      initialGateNumber: flight.operationalGate,
                     ),
                   );
                 },
@@ -1079,7 +1252,7 @@ class _AuditTabState extends State<AuditTab> {
                   Get.to(
                     () => CabinAuditScreen(
                       initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.arrivalGate,
+                      initialGateNumber: flight.operationalGate,
                       initialFlightNumber: flight.flightNumber,
                     ),
                   );
@@ -1098,7 +1271,7 @@ class _AuditTabState extends State<AuditTab> {
                   Get.to(
                     () => CabinQualityAuditScreenN(
                       initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.arrivalGate,
+                      initialGateNumber: flight.operationalGate,
                     ),
                   );
                 },
@@ -1172,7 +1345,7 @@ class _AuditOptionTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 24),
@@ -1216,7 +1389,7 @@ class _SkeletonCard extends StatelessWidget {
       height: 180.h,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withOpacity(0.1),
+        color: const Color(0xFF0F172A).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20.r),
       ),
       child: Stack(
