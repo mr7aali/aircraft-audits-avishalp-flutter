@@ -829,7 +829,40 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
         if (_canCreateTraining)
           GestureDetector(
             onTap: () async {
-              await Get.to(() => const CabinQualityAuditScreenN());
+              if (CabinQualityAuditScreenN.hasSavedDraft()) {
+                final continueDraft =
+                    await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Draft Found'),
+                        content: const Text(
+                          'You already have a saved Cabin Security Search draft. Do you want to continue it?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Start New'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Continue Draft'),
+                          ),
+                        ],
+                      ),
+                    ) ??
+                    false;
+
+                if (continueDraft) {
+                  await Get.to(
+                    () => const CabinQualityAuditScreenN(restoreDraft: true),
+                  );
+                } else {
+                  CabinQualityAuditScreenN.clearSavedDraft();
+                  await Get.to(() => const CabinQualityAuditScreenN());
+                }
+              } else {
+                await Get.to(() => const CabinQualityAuditScreenN());
+              }
               await controller.loadTrainings();
             },
             child: Container(
@@ -1080,10 +1113,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
                 if (loadingProgress == null) {
                   return child;
                 }
-                return _buildImageLoadingState(
-                  width: 64.w,
-                  height: 56.h,
-                );
+                return _buildImageLoadingState(width: 64.w, height: 56.h);
               },
               errorBuilder: (context, error, stackTrace) =>
                   _buildMissingImage(),
@@ -1851,9 +1881,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(10.r),
-        border: Border.all(
-          color: const Color(0xFFFFCC02).withOpacity(0.4),
-        ),
+        border: Border.all(color: const Color(0xFFFFCC02).withOpacity(0.4)),
       ),
       child: Row(
         children: <Widget>[
@@ -1940,10 +1968,7 @@ class _CabinSecurityScreenState extends State<CabinSecurityScreen> {
       decoration: BoxDecoration(
         color: status.color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6.r),
-        border: Border.all(
-          color: status.color.withOpacity(0.4),
-          width: 1,
-        ),
+        border: Border.all(color: status.color.withOpacity(0.4), width: 1),
       ),
       child: Text(
         status.label.toUpperCase(),

@@ -8,4 +8,5 @@ class AppPermissionCodes {
   static const String hiddenObjectAudit = 'HIDDEN_OBJECT_AUDIT';
   static const String feedback = 'FEEDBACK';
   static const String chat = 'CHAT';
+  static const String adminDashboardSubmissions = 'ADMIN_DASHBOARD_SUBMISSIONS';
 }

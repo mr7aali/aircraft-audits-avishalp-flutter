@@ -1181,6 +1181,12 @@ class _AuditTabState extends State<AuditTab> {
     bool showHiddenObject,
     AviationFlight flight,
   ) {
+    final hasLavDraft = LAVSafetyScreen.hasSavedDraft();
+    final hasCabinQualityDraft = CabinAuditScreen.hasSavedDraft();
+    final hasCabinSecurityDraft = CabinQualityAuditScreenN.hasSavedDraft();
+    final hasHiddenObjectDraft =
+        HiddenObjectAuditWorkflowScreen.hasSavedDraft();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1229,13 +1235,22 @@ class _AuditTabState extends State<AuditTab> {
                 subtitle: "Safety check for lavatory maintenance",
                 icon: Icons.clean_hands,
                 color: const Color(0xFF0EA5E9),
+                hasDraft: hasLavDraft,
                 onTap: () {
-                  Get.back();
-                  Get.to(
-                    () => LAVSafetyScreen(
-                      initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.operationalGate,
-                    ),
+                  _openAuditWithDraftPrompt(
+                    title: 'LAV Safety Observation',
+                    hasDraft: hasLavDraft,
+                    openDraft: () =>
+                        Get.to(() => const LAVSafetyScreen(restoreDraft: true)),
+                    openNew: () {
+                      LAVSafetyScreen.clearSavedDraft();
+                      Get.to(
+                        () => LAVSafetyScreen(
+                          initialShipNumber: flight.shipNumber,
+                          initialGateNumber: flight.operationalGate,
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -1247,14 +1262,24 @@ class _AuditTabState extends State<AuditTab> {
                 subtitle: "General cabin quality and cleanliness",
                 icon: Icons.check_circle_outline,
                 color: const Color(0xFF10B981),
+                hasDraft: hasCabinQualityDraft,
                 onTap: () {
-                  Get.back();
-                  Get.to(
-                    () => CabinAuditScreen(
-                      initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.operationalGate,
-                      initialFlightNumber: flight.flightNumber,
+                  _openAuditWithDraftPrompt(
+                    title: 'Cabin Quality Audit',
+                    hasDraft: hasCabinQualityDraft,
+                    openDraft: () => Get.to(
+                      () => const CabinAuditScreen(restoreDraft: true),
                     ),
+                    openNew: () {
+                      CabinAuditScreen.clearSavedDraft();
+                      Get.to(
+                        () => CabinAuditScreen(
+                          initialShipNumber: flight.shipNumber,
+                          initialGateNumber: flight.operationalGate,
+                          initialFlightNumber: flight.flightNumber,
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -1266,13 +1291,23 @@ class _AuditTabState extends State<AuditTab> {
                 subtitle: "Form-based security search training",
                 icon: Icons.security,
                 color: const Color(0xFFF59E0B),
+                hasDraft: hasCabinSecurityDraft,
                 onTap: () {
-                  Get.back();
-                  Get.to(
-                    () => CabinQualityAuditScreenN(
-                      initialShipNumber: flight.shipNumber,
-                      initialGateNumber: flight.operationalGate,
+                  _openAuditWithDraftPrompt(
+                    title: 'Cabin Security Search Training',
+                    hasDraft: hasCabinSecurityDraft,
+                    openDraft: () => Get.to(
+                      () => const CabinQualityAuditScreenN(restoreDraft: true),
                     ),
+                    openNew: () {
+                      CabinQualityAuditScreenN.clearSavedDraft();
+                      Get.to(
+                        () => CabinQualityAuditScreenN(
+                          initialShipNumber: flight.shipNumber,
+                          initialGateNumber: flight.operationalGate,
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -1284,9 +1319,21 @@ class _AuditTabState extends State<AuditTab> {
                 subtitle: "Conduct blind security search test",
                 icon: Icons.search,
                 color: const Color(0xFF8B5CF6),
+                hasDraft: hasHiddenObjectDraft,
                 onTap: () {
-                  Get.back();
-                  Get.to(() => const HiddenObjectAuditWorkflowScreen());
+                  _openAuditWithDraftPrompt(
+                    title: 'Hidden Object Audit',
+                    hasDraft: hasHiddenObjectDraft,
+                    openDraft: () => Get.to(
+                      () => const HiddenObjectAuditWorkflowScreen(
+                        restoreDraft: true,
+                      ),
+                    ),
+                    openNew: () {
+                      HiddenObjectAuditWorkflowScreen.clearSavedDraft();
+                      Get.to(() => const HiddenObjectAuditWorkflowScreen());
+                    },
+                  );
                 },
               ),
               const SizedBox(height: 12),
@@ -1312,6 +1359,103 @@ class _AuditTabState extends State<AuditTab> {
       ),
     );
   }
+
+  void _openAuditWithDraftPrompt({
+    required String title,
+    required bool hasDraft,
+    required VoidCallback openDraft,
+    required VoidCallback openNew,
+  }) {
+    Get.back();
+
+    if (!hasDraft) {
+      openNew();
+      return;
+    }
+
+    Get.bottomSheet(
+      Container(
+        padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 28.h),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Draft Found',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0F172A),
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'You already have a saved draft for $title.',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            SizedBox(height: 18.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Get.back();
+                  openDraft();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F766E),
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                ),
+                child: Text(
+                  'Continue Draft',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 10.h),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  Get.back();
+                  openNew();
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F766E),
+                  side: const BorderSide(color: Color(0xFF0F766E)),
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                ),
+                child: Text(
+                  'Start New Audit',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _AuditOptionTile extends StatelessWidget {
@@ -1319,6 +1463,7 @@ class _AuditOptionTile extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color color;
+  final bool hasDraft;
   final VoidCallback onTap;
 
   const _AuditOptionTile({
@@ -1326,6 +1471,7 @@ class _AuditOptionTile extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.color,
+    this.hasDraft = false,
     required this.onTap,
   });
 
@@ -1355,13 +1501,38 @@ class _AuditOptionTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1E293B),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      if (hasDraft)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Draft Saved',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
