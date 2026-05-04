@@ -13,6 +13,7 @@ import 'CabinSecurityTrainingScreen.dart';
 import '../../../data/seat_map_config.dart' as seat_map_config;
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
+import '../../../services/audit_draft_store.dart';
 import '../../../services/session_service.dart';
 
 // ─────────────────────────────────────────────
@@ -656,14 +657,20 @@ class CabinQualityController extends GetxController {
 // SCREEN
 // ─────────────────────────────────────────────
 class CabinQualityAuditScreenN extends StatefulWidget {
+  final bool restoreDraft;
   final String? initialShipNumber;
   final String? initialGateNumber;
 
   const CabinQualityAuditScreenN({
     super.key,
+    this.restoreDraft = false,
     this.initialShipNumber,
     this.initialGateNumber,
   });
+
+  static const String draftStorageKey = 'cabin_security_search_training_draft';
+  static bool hasSavedDraft() => AuditDraftStore.hasDraft(draftStorageKey);
+  static void clearSavedDraft() => AuditDraftStore.clearDraft(draftStorageKey);
 
   @override
   State<CabinQualityAuditScreenN> createState() =>
@@ -694,6 +701,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
   String? _linkedHiddenObjectAuditId;
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _didSubmitSuccessfully = false;
   bool _isGateLocked = false;
 
   String _normalizeGateValue(String value) {
@@ -710,7 +718,9 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     if (trimmed.isEmpty) {
       return trimmed;
     }
-    return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+    return trimmed.toLowerCase().startsWith('gate ')
+        ? trimmed
+        : 'Gate $trimmed';
   }
 
   String? _resolveGateId(String selectedGate) {
@@ -920,6 +930,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           (_session.activeStation?['roleName'] as String?)?.trim() ?? '';
       if (roleName.isNotEmpty) {
         _ctrl.supervisorRole.value = roleName;
+      }
+
+      if (widget.restoreDraft) {
+        _restoreDraft();
       }
     } on ApiException catch (error) {
       Get.snackbar(
@@ -1338,6 +1352,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
 
   @override
   void dispose() {
+    _persistDraftIfNeeded();
     _signatureController.dispose();
     super.dispose();
   }
@@ -1382,6 +1397,10 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
     ),
     centerTitle: true,
     actions: [
+      IconButton(
+        icon: Icon(Icons.save_outlined, color: _C.primary, size: 22.sp),
+        onPressed: _saveDraftManually,
+      ),
       IconButton(
         icon: Icon(Icons.info_outline_rounded, color: _C.primary, size: 22.sp),
         onPressed: _showInstructions,
@@ -2049,9 +2068,7 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
                                     Positioned.fill(
                                       child: Container(
                                         decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(
-                                            0.45,
-                                          ),
+                                          color: Colors.black.withOpacity(0.45),
                                           borderRadius: BorderRadius.circular(
                                             8.r,
                                           ),
@@ -2519,6 +2536,8 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
         return;
       }
 
+      _didSubmitSuccessfully = true;
+      CabinQualityAuditScreenN.clearSavedDraft();
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -2809,6 +2828,292 @@ class _CabinQualityAuditScreenNState extends State<CabinQualityAuditScreenN> {
           style: GoogleFonts.dmSans(fontSize: 10.sp, color: _C.grey),
         ),
       ],
+    );
+  }
+
+  bool _hasDraftContent() {
+    return _step > 0 ||
+        _ctrl.selectedGate.value != 'Please Select One' ||
+        _ctrl.shipNumber.value.trim().isNotEmpty ||
+        _ctrl.selectedAreas.isNotEmpty ||
+        _ctrl.areaCards.isNotEmpty ||
+        _ctrl.selectedSeatIds.isNotEmpty ||
+        _ctrl.mandatoryAreas.isNotEmpty ||
+        _ctrl.auditedSeats.isNotEmpty ||
+        _ctrl.otherFindingsCtrl.text.trim().isNotEmpty ||
+        _ctrl.additionalNotesCtrl.text.trim().isNotEmpty ||
+        _generalImages.isNotEmpty ||
+        (_linkedHiddenObjectAuditId?.trim().isNotEmpty ?? false);
+  }
+
+  void _persistDraftIfNeeded() {
+    if (_isSubmitting || _didSubmitSuccessfully) {
+      return;
+    }
+
+    if (!_hasDraftContent()) {
+      CabinQualityAuditScreenN.clearSavedDraft();
+      return;
+    }
+
+    AuditDraftStore.saveDraft(
+      id: CabinQualityAuditScreenN.draftStorageKey,
+      type: AuditDraftType.cabinSecuritySearchTraining,
+      title: 'Cabin Security Search Training',
+      subtitle: 'Resume the selected areas, findings, and hidden object links.',
+      shipNumber: _ctrl.shipNumber.value.trim(),
+      gate: _ctrl.selectedGate.value,
+      payload: {
+        'savedAt': DateTime.now().toIso8601String(),
+        'step': _step,
+        'selectedAircraft': _ctrl.selectedAircraft.value,
+        'selectedGate': _ctrl.selectedGate.value,
+        'shipNumber': _ctrl.shipNumber.value.trim(),
+        'supervisorName': _ctrl.supervisorName.value,
+        'supervisorRole': _ctrl.supervisorRole.value,
+        'otherFindings': _ctrl.otherFindingsCtrl.text.trim(),
+        'additionalNotes': _ctrl.additionalNotesCtrl.text.trim(),
+        'selectedAreas': _ctrl.selectedAreas.toList(),
+        'selectedSeatIds': _ctrl.selectedSeatIds.toList(),
+        'mandatoryAreas': _ctrl.mandatoryAreas.toList(),
+        'auditedSeats': Map<String, String>.from(_ctrl.auditedSeats),
+        'generalImages': _generalImages
+            .map(_serializePendingUpload)
+            .toList(growable: false),
+        'linkedHiddenObjectAuditId': _linkedHiddenObjectAuditId,
+        'hiddenObjectAreaByLocationId': Map<String, String>.from(
+          _hiddenObjectAreaByLocationId,
+        ),
+        'areaCards': _ctrl.areaCards
+            .map(_serializeAreaCard)
+            .toList(growable: false),
+      },
+    );
+  }
+
+  void _restoreDraft() {
+    final draft = AuditDraftStore.getPayload(
+      CabinQualityAuditScreenN.draftStorageKey,
+    );
+    if (draft == null || draft.isEmpty) {
+      return;
+    }
+
+    final draftAircraft = draft['selectedAircraft']?.toString().trim() ?? '';
+    if (draftAircraft.isNotEmpty &&
+        _ctrl.aircraftOptions.contains(draftAircraft)) {
+      _ctrl.selectedAircraft.value = draftAircraft;
+    }
+
+    final draftGate = draft['selectedGate']?.toString().trim() ?? '';
+    if (!_isGateLocked &&
+        draftGate.isNotEmpty &&
+        _ctrl.gateOptions.contains(draftGate)) {
+      _ctrl.selectedGate.value = draftGate;
+    }
+
+    _ctrl.shipNumber.value = draft['shipNumber']?.toString() ?? '';
+    _ctrl.supervisorName.value =
+        draft['supervisorName']?.toString() ?? _ctrl.supervisorName.value;
+    _ctrl.supervisorRole.value =
+        draft['supervisorRole']?.toString() ?? _ctrl.supervisorRole.value;
+    _ctrl.otherFindingsCtrl.text = draft['otherFindings']?.toString() ?? '';
+    _ctrl.additionalNotesCtrl.text = draft['additionalNotes']?.toString() ?? '';
+    _step = ((draft['step'] as num?)?.toInt() ?? 0).clamp(0, 2).toInt();
+
+    _ctrl.selectedAreas.assignAll(_readStringList(draft['selectedAreas']));
+    _ctrl.selectedSeatIds.assignAll(_readStringList(draft['selectedSeatIds']));
+    _ctrl.mandatoryAreas.assignAll(_readStringList(draft['mandatoryAreas']));
+    _ctrl.auditedSeats.assignAll(_readStringMap(draft['auditedSeats']));
+
+    _generalImages.assignAll(_deserializeUploads(draft['generalImages']));
+
+    _linkedHiddenObjectAuditId =
+        draft['linkedHiddenObjectAuditId']?.toString().trim().isEmpty == true
+        ? null
+        : draft['linkedHiddenObjectAuditId']?.toString().trim();
+    _hiddenObjectAreaByLocationId
+      ..clear()
+      ..addAll(_readStringMap(draft['hiddenObjectAreaByLocationId']));
+
+    _ctrl.areaCards.assignAll(_deserializeAreaCards(draft['areaCards']));
+    for (final card in _ctrl.areaCards) {
+      _ctrl.imageUploadedMap[card.areaName] = card.imageUploaded;
+    }
+    _ctrl.subItemVersion.value++;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+      Get.snackbar(
+        'Draft Restored',
+        'Your Cabin Security Search draft is ready to continue.',
+        backgroundColor: _C.primary,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+    });
+  }
+
+  Map<String, dynamic> _serializePendingUpload(PendingUploadFile upload) {
+    return {
+      'path': upload.localFile.path,
+      'fileId': upload.fileId,
+      'cloudinaryUrl': upload.cloudinaryUrl,
+      'progress': upload.progress,
+      'status': upload.status.name,
+      'errorMessage': upload.errorMessage,
+    };
+  }
+
+  PendingUploadFile? _deserializePendingUpload(dynamic raw) {
+    final map = AuditDraftStore.normalizeMap(raw);
+    final path = map['path']?.toString().trim() ?? '';
+    if (path.isEmpty) {
+      return null;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      return null;
+    }
+
+    final rawStatus = map['status']?.toString().trim().toLowerCase() ?? '';
+    var status = switch (rawStatus) {
+      'completed' => PendingUploadStatus.completed,
+      'failed' => PendingUploadStatus.failed,
+      _ => PendingUploadStatus.failed,
+    };
+    final fileId = map['fileId']?.toString().trim();
+    if (status == PendingUploadStatus.completed &&
+        (fileId == null || fileId.isEmpty)) {
+      status = PendingUploadStatus.failed;
+    }
+
+    return PendingUploadFile(
+      localFile: file,
+      fileId: fileId?.isNotEmpty == true ? fileId : null,
+      cloudinaryUrl: map['cloudinaryUrl']?.toString().trim(),
+      progress: (map['progress'] as num?)?.toDouble() ?? 0,
+      status: status,
+      errorMessage: status == PendingUploadStatus.failed
+          ? (map['errorMessage']?.toString().trim().isNotEmpty == true
+                ? map['errorMessage']?.toString().trim()
+                : 'Upload was interrupted. Tap retry.')
+          : map['errorMessage']?.toString().trim(),
+    );
+  }
+
+  List<PendingUploadFile> _deserializeUploads(dynamic raw) {
+    if (raw is! List) {
+      return const <PendingUploadFile>[];
+    }
+
+    return raw
+        .map(_deserializePendingUpload)
+        .whereType<PendingUploadFile>()
+        .toList(growable: false);
+  }
+
+  Map<String, dynamic> _serializeAreaCard(AreaCard card) {
+    return {
+      'areaName': card.areaName,
+      'status': card.status,
+      'images': card.images
+          .map(_serializePendingUpload)
+          .toList(growable: false),
+      'subItems': card.subItems
+          .map((sub) => {'itemName': sub.itemName, 'status': sub.status})
+          .toList(growable: false),
+    };
+  }
+
+  List<AreaCard> _deserializeAreaCards(dynamic raw) {
+    if (raw is! List) {
+      return const <AreaCard>[];
+    }
+
+    final cards = <AreaCard>[];
+    for (final entry in raw) {
+      final map = AuditDraftStore.normalizeMap(entry);
+      final areaName = map['areaName']?.toString().trim() ?? '';
+      if (areaName.isEmpty) {
+        continue;
+      }
+
+      final card = AreaCard(areaName: areaName);
+      card.status = map['status']?.toString() ?? '';
+      card.images = _deserializeUploads(map['images']);
+
+      final rawSubItems = map['subItems'];
+      if (rawSubItems is List) {
+        for (final subEntry in rawSubItems) {
+          final subMap = AuditDraftStore.normalizeMap(subEntry);
+          final itemName = subMap['itemName']?.toString().trim() ?? '';
+          if (itemName.isEmpty) {
+            continue;
+          }
+          final subItem = card.subItems.firstWhereOrNull(
+            (item) => item.itemName == itemName,
+          );
+          if (subItem != null) {
+            subItem.status = subMap['status']?.toString() ?? '';
+          }
+        }
+      }
+
+      cards.add(card);
+    }
+    return cards;
+  }
+
+  List<String> _readStringList(dynamic raw) {
+    if (raw is! List) {
+      return const <String>[];
+    }
+    return raw
+        .map((value) => value.toString().trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Map<String, String> _readStringMap(dynamic raw) {
+    if (raw is! Map) {
+      return <String, String>{};
+    }
+
+    final mapped = <String, String>{};
+    raw.forEach((key, value) {
+      final normalizedKey = key.toString().trim();
+      final normalizedValue = value?.toString().trim() ?? '';
+      if (normalizedKey.isNotEmpty && normalizedValue.isNotEmpty) {
+        mapped[normalizedKey] = normalizedValue;
+      }
+    });
+    return mapped;
+  }
+
+  void _saveDraftManually() {
+    _persistDraftIfNeeded();
+    if (!CabinQualityAuditScreenN.hasSavedDraft()) {
+      Get.snackbar(
+        'Nothing To Save',
+        'Select a few areas or notes first, then save the draft.',
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
+      return;
+    }
+
+    Get.snackbar(
+      'Draft Saved',
+      'Cabin Security Search draft saved successfully.',
+      backgroundColor: _C.primary,
+      colorText: Colors.white,
+      snackPosition: SnackPosition.TOP,
     );
   }
 
@@ -3761,9 +4066,7 @@ class _AreaCardWidgetState extends State<_AreaCardWidget> {
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
               decoration: BoxDecoration(
-                color: imageUploaded
-                    ? _C.green.withOpacity(0.08)
-                    : _C.warnBg,
+                color: imageUploaded ? _C.green.withOpacity(0.08) : _C.warnBg,
                 borderRadius: BorderRadius.circular(10.r),
                 border: Border.all(
                   color: imageUploaded

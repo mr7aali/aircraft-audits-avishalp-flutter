@@ -15,18 +15,25 @@ import 'package:signature/signature.dart';
 
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
+import '../../../services/audit_draft_store.dart';
 import '../../../services/session_service.dart';
 import 'LavSafetyObservationScreen.dart';
 
 class LAVSafetyScreen extends StatefulWidget {
+  final bool restoreDraft;
   final String? initialShipNumber;
   final String? initialGateNumber;
 
   const LAVSafetyScreen({
     super.key,
+    this.restoreDraft = false,
     this.initialShipNumber,
     this.initialGateNumber,
   });
+
+  static const String draftStorageKey = 'lav_safety_observation_draft';
+  static bool hasSavedDraft() => AuditDraftStore.hasDraft(draftStorageKey);
+  static void clearSavedDraft() => AuditDraftStore.clearDraft(draftStorageKey);
 
   @override
   State<LAVSafetyScreen> createState() => _LAVSafetyScreenState();
@@ -37,6 +44,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
   final SessionService _session = Get.find<SessionService>();
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _didSubmitSuccessfully = false;
   List<Map<String, dynamic>> _gates = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _checklistItems = <Map<String, dynamic>>[];
   List<String> _gateOptions = const ['Please Select One'];
@@ -84,7 +92,9 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
     if (trimmed.isEmpty) {
       return trimmed;
     }
-    return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+    return trimmed.toLowerCase().startsWith('gate ')
+        ? trimmed
+        : 'Gate $trimmed';
   }
 
   String? _resolveGateId(String selectedGate) {
@@ -151,6 +161,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
 
   @override
   void dispose() {
+    _persistDraftIfNeeded();
     _supervisorCtrl.dispose();
     _driverCtrl.dispose();
     _shipCtrl.dispose();
@@ -239,6 +250,10 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
             _isGateLocked = true;
           }
         }
+      }
+
+      if (widget.restoreDraft) {
+        _restoreDraft();
       }
     } catch (error) {
       final message = error is ApiException
@@ -518,6 +533,8 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
         return;
       }
 
+      _didSubmitSuccessfully = true;
+      LAVSafetyScreen.clearSavedDraft();
       Get.snackbar(
         "Success",
         "LAV Safety Report Sent Successfully",
@@ -569,6 +586,10 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
           fontWeight: FontWeight.bold,
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.save_outlined, color: Colors.white),
+            onPressed: _saveDraftManually,
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline_rounded, color: Colors.white),
             onPressed: () => _showInstructions(context),
@@ -894,9 +915,7 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFF9FAFB),
                             border: Border.all(
-                              color: AppColors.mainAppColor.withOpacity(
-                                0.3,
-                              ),
+                              color: AppColors.mainAppColor.withOpacity(0.3),
                               width: 1.5,
                             ),
                             borderRadius: BorderRadius.circular(12),
@@ -967,6 +986,224 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  bool _hasDraftContent() {
+    return _step > 0 ||
+        _driverCtrl.text.trim().isNotEmpty ||
+        _shipCtrl.text.trim().isNotEmpty ||
+        _otherFindingsCtrl.text.trim().isNotEmpty ||
+        _additionalCtrl.text.trim().isNotEmpty ||
+        _selectedGate != 'Please Select One' ||
+        _selectedValues.isNotEmpty ||
+        _uploadedImages.values.any((images) => images.isNotEmpty) ||
+        _step2Images.isNotEmpty;
+  }
+
+  void _persistDraftIfNeeded() {
+    if (_isSubmitting || _didSubmitSuccessfully) {
+      return;
+    }
+
+    if (!_hasDraftContent()) {
+      LAVSafetyScreen.clearSavedDraft();
+      return;
+    }
+
+    AuditDraftStore.saveDraft(
+      id: LAVSafetyScreen.draftStorageKey,
+      type: AuditDraftType.lavSafetyObservation,
+      title: 'LAV Safety Observation',
+      subtitle: 'Resume the LAV checklist, notes, and uploaded pictures.',
+      shipNumber: _shipCtrl.text.trim(),
+      gate: _selectedGate,
+      payload: {
+        'savedAt': DateTime.now().toIso8601String(),
+        'step': _step,
+        'supervisorName': _supervisorCtrl.text.trim(),
+        'driverName': _driverCtrl.text.trim(),
+        'shipNumber': _shipCtrl.text.trim(),
+        'selectedGate': _selectedGate,
+        'selectedValues': Map<String, String?>.from(_selectedValues),
+        'uploadedImages': {
+          for (final entry in _uploadedImages.entries)
+            if (entry.value.isNotEmpty)
+              entry.key: entry.value
+                  .map(_serializePendingUpload)
+                  .toList(growable: false),
+        },
+        'otherFindings': _otherFindingsCtrl.text.trim(),
+        'additionalNotes': _additionalCtrl.text.trim(),
+        'step2Images': _step2Images
+            .map(_serializePendingUpload)
+            .toList(growable: false),
+      },
+    );
+  }
+
+  void _restoreDraft() {
+    final draft = AuditDraftStore.getPayload(LAVSafetyScreen.draftStorageKey);
+    if (draft == null || draft.isEmpty) {
+      return;
+    }
+
+    _step = ((draft['step'] as num?)?.toInt() ?? 0).clamp(0, 2).toInt();
+    _supervisorCtrl.text =
+        draft['supervisorName']?.toString() ?? _supervisorCtrl.text;
+    _driverCtrl.text = draft['driverName']?.toString() ?? '';
+    _shipCtrl.text = draft['shipNumber']?.toString() ?? '';
+
+    final draftGate = draft['selectedGate']?.toString().trim() ?? '';
+    if (!_isGateLocked &&
+        draftGate.isNotEmpty &&
+        _gateOptions.contains(draftGate)) {
+      _selectedGate = draftGate;
+    }
+
+    _selectedValues
+      ..clear()
+      ..addAll(_readNullableStringMap(draft['selectedValues']));
+
+    _uploadedImages
+      ..clear()
+      ..addAll(_readUploadMap(draft['uploadedImages']));
+
+    _otherFindingsCtrl.text = draft['otherFindings']?.toString() ?? '';
+    _additionalCtrl.text = draft['additionalNotes']?.toString() ?? '';
+
+    _step2Images
+      ..clear()
+      ..addAll(_deserializeUploads(draft['step2Images']));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+      Get.snackbar(
+        'Draft Restored',
+        'Your LAV Safety Observation draft is ready to continue.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.mainAppColor,
+        colorText: Colors.white,
+      );
+    });
+  }
+
+  Map<String, dynamic> _serializePendingUpload(PendingUploadFile upload) {
+    return {
+      'path': upload.localFile.path,
+      'fileId': upload.fileId,
+      'cloudinaryUrl': upload.cloudinaryUrl,
+      'progress': upload.progress,
+      'status': upload.status.name,
+      'errorMessage': upload.errorMessage,
+    };
+  }
+
+  PendingUploadFile? _deserializePendingUpload(dynamic raw) {
+    final map = AuditDraftStore.normalizeMap(raw);
+    final path = map['path']?.toString().trim() ?? '';
+    if (path.isEmpty) {
+      return null;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      return null;
+    }
+
+    final rawStatus = map['status']?.toString().trim().toLowerCase() ?? '';
+    var status = switch (rawStatus) {
+      'completed' => PendingUploadStatus.completed,
+      'failed' => PendingUploadStatus.failed,
+      _ => PendingUploadStatus.failed,
+    };
+    final fileId = map['fileId']?.toString().trim();
+    if (status == PendingUploadStatus.completed &&
+        (fileId == null || fileId.isEmpty)) {
+      status = PendingUploadStatus.failed;
+    }
+
+    return PendingUploadFile(
+      localFile: file,
+      fileId: fileId?.isNotEmpty == true ? fileId : null,
+      cloudinaryUrl: map['cloudinaryUrl']?.toString().trim(),
+      progress: (map['progress'] as num?)?.toDouble() ?? 0,
+      status: status,
+      errorMessage: status == PendingUploadStatus.failed
+          ? (map['errorMessage']?.toString().trim().isNotEmpty == true
+                ? map['errorMessage']?.toString().trim()
+                : 'Upload was interrupted. Tap retry.')
+          : map['errorMessage']?.toString().trim(),
+    );
+  }
+
+  List<PendingUploadFile> _deserializeUploads(dynamic raw) {
+    if (raw is! List) {
+      return const <PendingUploadFile>[];
+    }
+
+    return raw
+        .map(_deserializePendingUpload)
+        .whereType<PendingUploadFile>()
+        .toList(growable: false);
+  }
+
+  Map<String, List<PendingUploadFile>> _readUploadMap(dynamic raw) {
+    if (raw is! Map) {
+      return <String, List<PendingUploadFile>>{};
+    }
+
+    final mapped = <String, List<PendingUploadFile>>{};
+    raw.forEach((key, value) {
+      final uploads = _deserializeUploads(value);
+      if (uploads.isNotEmpty) {
+        mapped[key.toString()] = uploads;
+      }
+    });
+    return mapped;
+  }
+
+  Map<String, String?> _readNullableStringMap(dynamic raw) {
+    if (raw is! Map) {
+      return <String, String?>{};
+    }
+
+    final mapped = <String, String?>{};
+    raw.forEach((key, value) {
+      final normalizedKey = key.toString().trim();
+      if (normalizedKey.isEmpty) {
+        return;
+      }
+      final normalizedValue = value?.toString().trim();
+      mapped[normalizedKey] = normalizedValue == null || normalizedValue.isEmpty
+          ? null
+          : normalizedValue;
+    });
+    return mapped;
+  }
+
+  void _saveDraftManually() {
+    _persistDraftIfNeeded();
+    if (!LAVSafetyScreen.hasSavedDraft()) {
+      Get.snackbar(
+        'Nothing To Save',
+        'Add a few observation details first, then save the draft.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    Get.snackbar(
+      'Draft Saved',
+      'LAV Safety Observation draft saved successfully.',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: AppColors.mainAppColor,
+      colorText: Colors.white,
     );
   }
 
@@ -1220,19 +1457,14 @@ class _LAVSafetyScreenState extends State<LAVSafetyScreen> {
     );
   }
 
-  Widget _buildTextField(
-    String hint, {
-    TextEditingController? controller,
-  }) {
+  Widget _buildTextField(String hint, {TextEditingController? controller}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: TextStyle(
-            color: AppColors.from_heading.withOpacity(0.8),
-          ),
+          hintStyle: TextStyle(color: AppColors.from_heading.withOpacity(0.8)),
           filled: true,
           fillColor: const Color(0xFFF9FAFB),
           border: OutlineInputBorder(

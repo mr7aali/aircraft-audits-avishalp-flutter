@@ -6,7 +6,6 @@ import 'package:avislap/views/forms/Cabin%20Quality%20Audit/CabinQualityAuditLis
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +16,7 @@ import '../../../data/cabin_quality_scoring.dart';
 import '../../../data/seat_map_config.dart' as seat_map_config;
 import '../../../services/api_exception.dart';
 import '../../../services/app_api_service.dart';
+import '../../../services/audit_draft_store.dart';
 import '../../../services/session_service.dart';
 
 // ─────────────────────────────────────────────
@@ -492,9 +492,7 @@ class CabinAudit extends GetxController {
     }
   }
 
-  CabinQualityScoreSummary buildScoreSummary({
-    Iterable<String>? areaIds,
-  }) {
+  CabinQualityScoreSummary buildScoreSummary({Iterable<String>? areaIds}) {
     final ids = (areaIds ?? auditedSeats.keys).toList()..sort();
     final inputs = ids
         .map(
@@ -535,12 +533,11 @@ class CabinAuditScreen extends StatefulWidget {
 
   static const String draftStorageKey = 'cabin_quality_audit_draft';
   static bool hasSavedDraft() {
-    final raw = GetStorage().read(draftStorageKey);
-    return raw is Map && raw.isNotEmpty;
+    return AuditDraftStore.hasDraft(draftStorageKey);
   }
 
   static void clearSavedDraft() {
-    GetStorage().remove(draftStorageKey);
+    AuditDraftStore.clearDraft(draftStorageKey);
   }
 
   @override
@@ -553,7 +550,6 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
   late final CabinAudit _ctrl;
   final AppApiService _api = Get.find<AppApiService>();
   final SessionService _session = Get.find<SessionService>();
-  final GetStorage _draftBox = GetStorage();
   final _supervisorCtrl = TextEditingController();
   final _shipNumberCtrl = TextEditingController();
   final _flightNumberCtrl = TextEditingController();
@@ -591,7 +587,9 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     if (trimmed.isEmpty) {
       return trimmed;
     }
-    return trimmed.toLowerCase().startsWith('gate ') ? trimmed : 'Gate $trimmed';
+    return trimmed.toLowerCase().startsWith('gate ')
+        ? trimmed
+        : 'Gate $trimmed';
   }
 
   String _normalizeCleanTypeValue(String value) {
@@ -818,11 +816,15 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       }
 
       // Auto-populate initial values from API
-      if (widget.initialShipNumber != null && widget.initialShipNumber!.isNotEmpty) {
+      if (widget.initialShipNumber != null &&
+          widget.initialShipNumber!.isNotEmpty) {
         _shipNumberCtrl.text = widget.initialShipNumber!.trim().toUpperCase();
       }
-      if (widget.initialFlightNumber != null && widget.initialFlightNumber!.isNotEmpty) {
-        _flightNumberCtrl.text = widget.initialFlightNumber!.trim().toUpperCase();
+      if (widget.initialFlightNumber != null &&
+          widget.initialFlightNumber!.isNotEmpty) {
+        _flightNumberCtrl.text = widget.initialFlightNumber!
+            .trim()
+            .toUpperCase();
       }
       if (widget.initialGateNumber != null &&
           widget.initialGateNumber!.isNotEmpty) {
@@ -925,6 +927,10 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     ),
     centerTitle: true,
     actions: [
+      IconButton(
+        icon: Icon(Icons.save_outlined, color: _C.primary, size: 22.sp),
+        onPressed: _saveDraftManually,
+      ),
       IconButton(
         icon: Icon(Icons.info_outline_rounded, color: _C.primary, size: 22.sp),
         onPressed: _showInstructions,
@@ -1276,20 +1282,17 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8.r),
-                                  child: Image.file(
-                                    upload.localFile,
+                                  child: _buildUploadPreview(
+                                    upload,
                                     width: 80.w,
                                     height: 80.w,
-                                    fit: BoxFit.cover,
                                   ),
                                 ),
                                 if (upload.isUploading || upload.hasError)
                                   Positioned.fill(
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(
-                                          0.45,
-                                        ),
+                                        color: Colors.black.withOpacity(0.45),
                                         borderRadius: BorderRadius.circular(
                                           8.r,
                                         ),
@@ -2004,21 +2007,25 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                           final allAreaIds = {
                             ..._ctrl.auditedSeats.keys,
                             id,
-                          }.toList()
-                            ..sort();
+                          }.toList()..sort();
                           final weightedSummary = calculateCabinQualityScore(
                             allAreaIds
                                 .map(
                                   (areaId) => CabinQualityScoreAreaInput(
                                     areaId: areaId,
                                     sectionLabel: _ctrl.getSectionLabel(areaId),
-                                    areaGroup: _ctrl.getAreaGroupForSeat(areaId),
+                                    areaGroup: _ctrl.getAreaGroupForSeat(
+                                      areaId,
+                                    ),
                                     itemStatuses: _ctrl
                                         .getCheckItemsForSeat(areaId)
                                         .map(
                                           (item) => areaId == id
                                               ? itemStatuses[item]!.value
-                                              : _ctrl.getCheckItem(areaId, item),
+                                              : _ctrl.getCheckItem(
+                                                  areaId,
+                                                  item,
+                                                ),
                                         )
                                         .toList(),
                                   ),
@@ -2033,8 +2040,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                               sectionLabel: categoryLabel,
                               areaGroup: _ctrl.getAreaGroupForSeat(id),
                               configuredGroupWeight:
-                                  _ctrl.currentAreaWeights[
-                                      _ctrl.getAreaGroupForSeat(id)] ??
+                                  _ctrl.currentAreaWeights[_ctrl
+                                      .getAreaGroupForSeat(id)] ??
                                   0,
                               groupAreaCount: 0,
                               areaWeight: 0,
@@ -2069,13 +2076,13 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                                     color: overallColor,
                                   ),
                                   child: Center(
-                                      child: Text(
-                                        weightedArea.applicableItemCount == 0
-                                            ? 'N/A'
-                                            : '${weightedArea.scorePercent.toStringAsFixed(0)}%',
-                                        style: GoogleFonts.dmSans(
-                                          fontSize: 13.sp,
-                                          fontWeight: FontWeight.w700,
+                                    child: Text(
+                                      weightedArea.applicableItemCount == 0
+                                          ? 'N/A'
+                                          : '${weightedArea.scorePercent.toStringAsFixed(0)}%',
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 13.sp,
+                                        fontWeight: FontWeight.w700,
                                         color: Colors.white,
                                       ),
                                     ),
@@ -2636,7 +2643,11 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8.r),
-                        child: Image.file(imgs[i].localFile, fit: BoxFit.cover),
+                        child: _buildUploadPreview(
+                          imgs[i],
+                          width: 68.w,
+                          height: 68.h,
+                        ),
                       ),
                     ),
                     if (imgs[i].isUploading || imgs[i].hasError)
@@ -2785,6 +2796,42 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     );
   }
 
+  Widget _buildUploadPreview(
+    PendingUploadFile upload, {
+    required double width,
+    required double height,
+  }) {
+    if (upload.localFile.existsSync()) {
+      return Image.file(
+        upload.localFile,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+      );
+    }
+
+    final remoteUrl = upload.cloudinaryUrl?.trim() ?? '';
+    if (remoteUrl.isNotEmpty) {
+      return Image.network(
+        remoteUrl,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildMissingUploadPlaceholder(),
+      );
+    }
+
+    return _buildMissingUploadPlaceholder();
+  }
+
+  Widget _buildMissingUploadPlaceholder() {
+    return Container(
+      color: const Color(0xFFF8FAFC),
+      alignment: Alignment.center,
+      child: Icon(Icons.image_not_supported_outlined, color: _C.grey),
+    );
+  }
+
   // ── Sheet label ──────────────────────────────
   Widget _sheetLabel(String text, {bool required = false}) {
     return Padding(
@@ -2867,10 +2914,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     ),
   );
 
-  Widget _pillReadOnlyField(
-    String value, {
-    required String hint,
-  }) => Container(
+  Widget _pillReadOnlyField(String value, {required String hint}) => Container(
     width: double.infinity,
     padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
     decoration: BoxDecoration(
@@ -3110,10 +3154,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         .toList();
   }
 
-  String? _optionalTrimmedText(
-    String value, {
-    required int maxLength,
-  }) {
+  String? _optionalTrimmedText(String value, {required int maxLength}) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
       return null;
@@ -3140,16 +3181,16 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       return null;
     }
 
-    final map = raw.map(
-      (key, value) => MapEntry(key.toString(), value),
-    );
+    final map = raw.map((key, value) => MapEntry(key.toString(), value));
     final path = map['path']?.toString().trim() ?? '';
     if (path.isEmpty) {
       return null;
     }
 
     final file = File(path);
-    if (!file.existsSync()) {
+    final remoteUrl = map['cloudinaryUrl']?.toString().trim() ?? '';
+    final hasRemoteCopy = remoteUrl.isNotEmpty;
+    if (!file.existsSync() && !hasRemoteCopy) {
       return null;
     }
 
@@ -3169,7 +3210,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
     return PendingUploadFile(
       localFile: file,
       fileId: hasFileId ? fileId : null,
-      cloudinaryUrl: map['cloudinaryUrl']?.toString().trim(),
+      cloudinaryUrl: hasRemoteCopy ? remoteUrl : null,
       progress: (map['progress'] as num?)?.toDouble() ?? 0,
       status: status,
       errorMessage: status == PendingUploadStatus.failed
@@ -3282,16 +3323,23 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       },
     };
 
-    _draftBox.write(CabinAuditScreen.draftStorageKey, draft);
+    AuditDraftStore.saveDraft(
+      id: CabinAuditScreen.draftStorageKey,
+      type: AuditDraftType.cabinQualityAudit,
+      title: 'Cabin Quality Audit',
+      subtitle: 'Resume the cabin quality checklist and seat map review.',
+      shipNumber: _shipNumberCtrl.text.trim(),
+      flightNumber: _flightNumberCtrl.text.trim(),
+      gate: _ctrl.selectedGate.value,
+      payload: draft,
+    );
   }
 
   void _restoreDraft() {
-    final raw = _draftBox.read(CabinAuditScreen.draftStorageKey);
-    if (raw is! Map) {
+    final draft = AuditDraftStore.getPayload(CabinAuditScreen.draftStorageKey);
+    if (draft == null || draft.isEmpty) {
       return;
     }
-
-    final draft = raw.map((key, value) => MapEntry(key.toString(), value));
 
     final draftAircraft = draft['selectedAircraft']?.toString().trim() ?? '';
     if (draftAircraft.isNotEmpty &&
@@ -3343,9 +3391,8 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
       rawCheckItemImages.forEach((key, value) {
         final uploads = _deserializeUploads(value);
         if (uploads.isNotEmpty) {
-          _ctrl.checkItemImages[key.toString()] = RxList<PendingUploadFile>.from(
-            uploads,
-          );
+          _ctrl.checkItemImages[key.toString()] =
+              RxList<PendingUploadFile>.from(uploads);
         }
       });
     }
@@ -3384,6 +3431,7 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
         uploads.refresh();
       }
     }
+    _persistDraftIfNeeded();
   }
 
   Future<String> _uploadSignature() async {
@@ -3908,6 +3956,28 @@ class _CabinAuditScreenState extends State<CabinAuditScreen>
           ),
         ],
       ),
+    );
+  }
+
+  void _saveDraftManually() {
+    _persistDraftIfNeeded();
+    if (!CabinAuditScreen.hasSavedDraft()) {
+      Get.snackbar(
+        'Nothing To Save',
+        'Add a few audit details first, then save the draft.',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: _C.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    Get.snackbar(
+      'Draft Saved',
+      'Cabin Quality Audit draft saved successfully.',
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: _C.primary,
+      colorText: Colors.white,
     );
   }
 }

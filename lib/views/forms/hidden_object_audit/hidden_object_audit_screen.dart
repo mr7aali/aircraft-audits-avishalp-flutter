@@ -7,6 +7,7 @@ import 'package:avislap/data/seat_map_config.dart' as seat_map_config;
 import 'package:avislap/models/pending_upload_file.dart';
 import 'package:avislap/services/api_exception.dart';
 import 'package:avislap/services/app_api_service.dart';
+import 'package:avislap/services/audit_draft_store.dart';
 import 'package:avislap/services/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -357,6 +358,41 @@ class _HiddenObjectAuditListScreenState
   }
 
   Future<void> _openWorkflow({String? auditId}) async {
+    if (auditId == null && HiddenObjectAuditWorkflowScreen.hasSavedDraft()) {
+      final continueDraft =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Draft Found'),
+              content: const Text(
+                'You already have a saved Hidden Object Audit draft. Do you want to continue it?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Start New'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Continue Draft'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+
+      if (continueDraft) {
+        await Get.to(
+          () => const HiddenObjectAuditWorkflowScreen(restoreDraft: true),
+          transition: Transition.rightToLeft,
+        );
+        await _load();
+        return;
+      }
+
+      HiddenObjectAuditWorkflowScreen.clearSavedDraft();
+    }
+
     await Get.to(
       () => HiddenObjectAuditWorkflowScreen(auditId: auditId),
       transition: Transition.rightToLeft,
@@ -507,9 +543,18 @@ class _HiddenObjectAuditListScreenState
 }
 
 class HiddenObjectAuditWorkflowScreen extends StatefulWidget {
-  const HiddenObjectAuditWorkflowScreen({super.key, this.auditId});
+  const HiddenObjectAuditWorkflowScreen({
+    super.key,
+    this.auditId,
+    this.restoreDraft = false,
+  });
 
   final String? auditId;
+  final bool restoreDraft;
+
+  static const String draftStorageKey = 'hidden_object_audit_draft';
+  static bool hasSavedDraft() => AuditDraftStore.hasDraft(draftStorageKey);
+  static void clearSavedDraft() => AuditDraftStore.clearDraft(draftStorageKey);
 
   @override
   State<HiddenObjectAuditWorkflowScreen> createState() =>
@@ -545,6 +590,7 @@ class _HiddenObjectAuditWorkflowScreenState
 
   @override
   void dispose() {
+    _persistDraftIfNeeded();
     _objectCountCtrl.dispose();
     super.dispose();
   }
@@ -610,6 +656,10 @@ class _HiddenObjectAuditWorkflowScreenState
           ? aircraftOptions.first.id
           : null;
     });
+
+    if (widget.restoreDraft) {
+      _restoreDraft();
+    }
   }
 
   HiddenObjectFleetOption? get _selectedFleet => _fleetOptions.firstWhereOrNull(
@@ -729,6 +779,7 @@ class _HiddenObjectAuditWorkflowScreenState
       setState(() {
         _detail = HiddenObjectAuditDetail.fromMap(response);
       });
+      HiddenObjectAuditWorkflowScreen.clearSavedDraft();
       Get.snackbar(
         'Audit Created',
         _isUsingManualCreateSelection
@@ -843,6 +894,14 @@ class _HiddenObjectAuditWorkflowScreenState
           ),
         ),
         iconTheme: const IconThemeData(color: _HOColors.textDark),
+        actions: detail == null
+            ? [
+                IconButton(
+                  onPressed: _saveDraftManually,
+                  icon: const Icon(Icons.save_outlined),
+                ),
+              ]
+            : null,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -1258,6 +1317,125 @@ class _HiddenObjectAuditWorkflowScreenState
           ),
         ),
       ],
+    );
+  }
+
+  bool _hasDraftContent() {
+    if (widget.auditId != null || _detail != null) {
+      return false;
+    }
+
+    return (_selectedShipNumber?.trim().isNotEmpty ?? false) ||
+        (_selectedAircraftTypeId?.trim().isNotEmpty ?? false) ||
+        _objectCountCtrl.text.trim() != '3' ||
+        _manualSelectionEnabled ||
+        _selectedCreateLocationCodes.isNotEmpty;
+  }
+
+  void _persistDraftIfNeeded() {
+    if (_saving || widget.auditId != null || _detail != null) {
+      return;
+    }
+
+    if (!_hasDraftContent()) {
+      HiddenObjectAuditWorkflowScreen.clearSavedDraft();
+      return;
+    }
+
+    AuditDraftStore.saveDraft(
+      id: HiddenObjectAuditWorkflowScreen.draftStorageKey,
+      type: AuditDraftType.hiddenObjectAudit,
+      title: 'Hidden Object Audit',
+      subtitle: 'Resume the hidden object setup and selected target locations.',
+      shipNumber: _selectedShipNumber?.trim(),
+      payload: {
+        'savedAt': DateTime.now().toIso8601String(),
+        'selectedShipNumber': _selectedShipNumber,
+        'selectedAircraftTypeId': _selectedAircraftTypeId,
+        'objectCount': _objectCountCtrl.text.trim(),
+        'manualSelectionEnabled': _manualSelectionEnabled,
+        'selectedCreateLocationCodes': _selectedCreateLocationCodes.toList(),
+      },
+    );
+  }
+
+  void _restoreDraft() {
+    final draft = AuditDraftStore.getPayload(
+      HiddenObjectAuditWorkflowScreen.draftStorageKey,
+    );
+    if (draft == null || draft.isEmpty) {
+      return;
+    }
+
+    final draftShipNumber = draft['selectedShipNumber']?.toString().trim();
+    if (draftShipNumber != null &&
+        _fleetOptions.any((item) => item.shipNumber == draftShipNumber)) {
+      _selectedShipNumber = draftShipNumber;
+    }
+
+    final draftAircraftTypeId = draft['selectedAircraftTypeId']
+        ?.toString()
+        .trim();
+    if (draftAircraftTypeId != null &&
+        _aircraftOptions.any((item) => item.id == draftAircraftTypeId)) {
+      _selectedAircraftTypeId = draftAircraftTypeId;
+    }
+
+    final objectCount = draft['objectCount']?.toString().trim() ?? '';
+    if (objectCount.isNotEmpty) {
+      _objectCountCtrl.text = objectCount;
+    }
+
+    _manualSelectionEnabled = draft['manualSelectionEnabled'] == true;
+    _selectedCreateLocationCodes
+      ..clear()
+      ..addAll(_readStringList(draft['selectedCreateLocationCodes']));
+
+    if (_manualSelectionEnabled && _selectedCreateLocationCodes.isNotEmpty) {
+      _syncObjectCountToSelection();
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+      Get.snackbar(
+        'Draft Restored',
+        'Your Hidden Object Audit draft is ready to continue.',
+        backgroundColor: _HOColors.primary,
+        colorText: Colors.white,
+      );
+    });
+  }
+
+  List<String> _readStringList(dynamic raw) {
+    if (raw is! List) {
+      return const <String>[];
+    }
+    return raw
+        .map((value) => value.toString().trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  void _saveDraftManually() {
+    _persistDraftIfNeeded();
+    if (!HiddenObjectAuditWorkflowScreen.hasSavedDraft()) {
+      Get.snackbar(
+        'Nothing To Save',
+        'Choose a ship or target setup first, then save the draft.',
+        backgroundColor: _HOColors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    Get.snackbar(
+      'Draft Saved',
+      'Hidden Object Audit draft saved successfully.',
+      backgroundColor: _HOColors.primary,
+      colorText: Colors.white,
     );
   }
 

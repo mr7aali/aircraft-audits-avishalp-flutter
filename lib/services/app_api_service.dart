@@ -349,6 +349,28 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> listMyDynamicFormSubmissions({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'dynamic-forms/my-submissions',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> listAllDynamicFormSubmissions({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'dynamic-forms/submissions',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
   Future<CloudinarySignedUploadPayload>
   getCloudinarySignedUploadPayload() async {
     final data = await _send('POST', 'upload/signed-url', body: const {});

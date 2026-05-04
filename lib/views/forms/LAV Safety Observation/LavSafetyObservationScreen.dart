@@ -1232,7 +1232,41 @@ class _LavSafetyObservationScreenState
         ),
         if (_canCreateObservation)
           GestureDetector(
-            onTap: () => Get.to(() => LAVSafetyScreen()),
+            onTap: () async {
+              if (LAVSafetyScreen.hasSavedDraft()) {
+                final continueDraft =
+                    await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Draft Found'),
+                        content: const Text(
+                          'You already have a saved LAV Safety Observation draft. Do you want to continue it?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Start New'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Continue Draft'),
+                          ),
+                        ],
+                      ),
+                    ) ??
+                    false;
+
+                if (continueDraft) {
+                  await Get.to(() => const LAVSafetyScreen(restoreDraft: true));
+                } else {
+                  LAVSafetyScreen.clearSavedDraft();
+                  await Get.to(() => const LAVSafetyScreen());
+                }
+                return;
+              }
+
+              await Get.to(() => const LAVSafetyScreen());
+            },
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
               decoration: BoxDecoration(

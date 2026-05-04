@@ -7,7 +7,11 @@ import '../../healper/route.dart';
 import '../../services/app_api_service.dart';
 import '../../services/session_service.dart';
 import '../../utils/app_colors.dart';
+import '../audits/draft_audits_screen.dart';
 import '../audits/my_audits_screen.dart';
+import '../../config/app_permission_codes.dart';
+import '../forms/survey_hub/admin_submitted_forms_screen.dart';
+import '../forms/survey_hub/my_submitted_forms_screen.dart';
 
 class AppDrawer extends StatefulWidget {
   final VoidCallback? onDashboardTap;
@@ -66,6 +70,9 @@ class _AppDrawerState extends State<AppDrawer> {
   @override
   Widget build(BuildContext context) {
     final session = Get.find<SessionService>();
+    final canViewAdminSubmissions = session.hasPermission(
+      AppPermissionCodes.adminDashboardSubmissions,
+    );
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -135,6 +142,31 @@ class _AppDrawerState extends State<AppDrawer> {
                     Get.to(() => const MyAuditsScreen());
                   },
                 ),
+                DrawerTile(
+                  icon: Icons.drafts_outlined,
+                  title: 'Draft Audits',
+                  onTap: () {
+                    Get.back();
+                    Get.to(() => const DraftAuditsScreen());
+                  },
+                ),
+                DrawerTile(
+                  icon: Icons.assignment_turned_in_outlined,
+                  title: 'My Submitted Forms',
+                  onTap: () {
+                    Get.back();
+                    Get.to(() => const MySubmittedFormsScreen());
+                  },
+                ),
+                if (canViewAdminSubmissions)
+                  DrawerTile(
+                    icon: Icons.topic_outlined,
+                    title: 'All Submitted Forms',
+                    onTap: () {
+                      Get.back();
+                      Get.to(() => const AdminSubmittedFormsScreen());
+                    },
+                  ),
                 DrawerTile(
                   icon: Icons.assignment_outlined,
                   title: 'Pending Tasks',
