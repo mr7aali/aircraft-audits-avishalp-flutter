@@ -69,9 +69,7 @@ class SurveyQuestion {
   bool get isDropdown => type == 'dropdown';
 
   bool get isRating =>
-      type == 'rating' ||
-      type == 'linear-scale' ||
-      type == 'linear_scale';
+      type == 'rating' || type == 'linear-scale' || type == 'linear_scale';
 
   bool get isDate => type == 'date';
 
@@ -115,11 +113,13 @@ class SurveyTemplate {
       status: ((map['status'] as String?) ?? 'PUBLISHED').trim(),
       estimatedMinutes: (map['estimatedMinutes'] as num?)?.toInt() ?? 1,
       questions: rawQuestions
-          .map((dynamic item) => SurveyQuestion.fromMap(
-                item is Map<String, dynamic>
-                    ? item
-                    : Map<String, dynamic>.from(item as Map),
-              ))
+          .map(
+            (dynamic item) => SurveyQuestion.fromMap(
+              item is Map<String, dynamic>
+                  ? item
+                  : Map<String, dynamic>.from(item as Map),
+            ),
+          )
           .toList(),
     );
   }
@@ -134,15 +134,34 @@ class SurveyHubScreen extends StatefulWidget {
 
 class _SurveyHubScreenState extends State<SurveyHubScreen> {
   final AppApiService _api = Get.find<AppApiService>();
+  final TextEditingController _searchCtrl = TextEditingController();
 
   bool _isLoading = true;
   String? _errorMessage;
   List<SurveyTemplate> _surveys = const <SurveyTemplate>[];
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(_handleSearchChanged);
     _loadSurveys();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl
+      ..removeListener(_handleSearchChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleSearchChanged() {
+    final String next = _searchCtrl.text.trim();
+    if (next == _searchQuery) {
+      return;
+    }
+    setState(() => _searchQuery = next);
   }
 
   Future<void> _loadSurveys() async {
@@ -152,8 +171,8 @@ class _SurveyHubScreenState extends State<SurveyHubScreen> {
     });
 
     try {
-      final List<Map<String, dynamic>> response =
-          await _api.listPublishedDynamicForms();
+      final List<Map<String, dynamic>> response = await _api
+          .listPublishedDynamicForms();
       setState(() {
         _surveys = response.map(SurveyTemplate.fromMap).toList();
       });
@@ -172,8 +191,23 @@ class _SurveyHubScreenState extends State<SurveyHubScreen> {
     }
   }
 
+  List<SurveyTemplate> get _filteredSurveys {
+    if (_searchQuery.isEmpty) {
+      return _surveys;
+    }
+
+    final String query = _searchQuery.toLowerCase();
+    return _surveys.where((SurveyTemplate template) {
+      return template.title.toLowerCase().contains(query) ||
+          template.description.toLowerCase().contains(query) ||
+          template.category.toLowerCase().contains(query) ||
+          template.formType.toLowerCase().contains(query);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final List<SurveyTemplate> filteredSurveys = _filteredSurveys;
     final int totalQuestions = _surveys.fold<int>(
       0,
       (int sum, SurveyTemplate item) => sum + item.questions.length,
@@ -296,6 +330,13 @@ class _SurveyHubScreenState extends State<SurveyHubScreen> {
               ),
             ),
             SizedBox(height: 22.h),
+            _SearchSummaryCard(
+              controller: _searchCtrl,
+              searchQuery: _searchQuery,
+              totalCount: _surveys.length,
+              resultCount: filteredSurveys.length,
+            ),
+            SizedBox(height: 18.h),
             Text(
               'Available surveys',
               style: GoogleFonts.plusJakartaSans(
@@ -308,14 +349,13 @@ class _SurveyHubScreenState extends State<SurveyHubScreen> {
             if (_isLoading)
               const _LoadingPanel()
             else if (_errorMessage != null)
-              _ErrorPanel(
-                message: _errorMessage!,
-                onRetry: _loadSurveys,
-              )
+              _ErrorPanel(message: _errorMessage!, onRetry: _loadSurveys)
             else if (_surveys.isEmpty)
               const _EmptyPanel()
+            else if (filteredSurveys.isEmpty)
+              _SearchEmptyPanel(searchQuery: _searchQuery)
             else
-              ..._surveys.map(
+              ...filteredSurveys.map(
                 (SurveyTemplate template) => Padding(
                   padding: EdgeInsets.only(bottom: 14.h),
                   child: _SurveyCard(template: template),
@@ -323,6 +363,102 @@ class _SurveyHubScreenState extends State<SurveyHubScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SearchSummaryCard extends StatelessWidget {
+  final TextEditingController controller;
+  final String searchQuery;
+  final int totalCount;
+  final int resultCount;
+
+  const _SearchSummaryCard({
+    required this.controller,
+    required this.searchQuery,
+    required this.totalCount,
+    required this.resultCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasSearch = searchQuery.isNotEmpty;
+
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18.r),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 4.h),
+            child: Row(
+              children: <Widget>[
+                const Icon(Icons.search_rounded, color: Color(0xFF64748B)),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText:
+                          'Search by form title, category, type, or keyword',
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.dark,
+                    ),
+                  ),
+                ),
+                if (hasSearch)
+                  IconButton(
+                    onPressed: controller.clear,
+                    splashRadius: 18.r,
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          SizedBox(height: 12.h),
+          // Text(
+          //   hasSearch
+          //       ? '$resultCount of $totalCount forms match "${searchQuery.trim()}".'
+          //       : 'Browse all $totalCount published forms or search to jump to one faster.',
+          //   style: GoogleFonts.plusJakartaSans(
+          //     fontSize: 12.sp,
+          //     fontWeight: FontWeight.w600,
+          //     color: const Color(0xFF64748B),
+          //     height: 1.45,
+          //   ),
+          // ),
+        ],
       ),
     );
   }
@@ -458,6 +594,53 @@ class _EmptyPanel extends StatelessWidget {
           SizedBox(height: 8.h),
           Text(
             'Ask an admin to publish a form from Forms Creation, then pull to refresh here.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w500,
+              color: AppColors.from_heading,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchEmptyPanel extends StatelessWidget {
+  final String searchQuery;
+
+  const _SearchEmptyPanel({required this.searchQuery});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(22.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: <Widget>[
+          Icon(
+            Icons.search_off_rounded,
+            color: const Color(0xFF94A3B8),
+            size: 34.sp,
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'No matching forms found',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.dark,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            'No published forms matched "$searchQuery". Try a different title, category, or keyword.',
             textAlign: TextAlign.center,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 13.sp,
@@ -751,10 +934,7 @@ class _SurveyResponseScreenState extends State<SurveyResponseScreen> {
           ? error.message
           : 'Unable to submit the form right now.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
     } finally {
       if (mounted) {
@@ -828,7 +1008,8 @@ class _SurveyResponseScreenState extends State<SurveyResponseScreen> {
           'fileId': uploaded['id'],
           'cloudinaryUrl': uploaded['cloudinaryUrl'],
           'originalFileName':
-              (uploaded['originalFileName'] as String?) ?? path.basename(file.path),
+              (uploaded['originalFileName'] as String?) ??
+              path.basename(file.path),
         };
       });
     } catch (error) {
@@ -840,10 +1021,7 @@ class _SurveyResponseScreenState extends State<SurveyResponseScreen> {
           ? error.message
           : 'Unable to upload the attachment.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
     } finally {
       if (mounted) {
@@ -960,29 +1138,29 @@ class _SurveyResponseScreenState extends State<SurveyResponseScreen> {
             ),
           ),
           SizedBox(height: 18.h),
-          ...widget.template.questions.asMap().entries.map(
-            (MapEntry<int, SurveyQuestion> entry) {
-              final int index = entry.key;
-              final SurveyQuestion question = entry.value;
-              return Padding(
-                padding: EdgeInsets.only(bottom: 14.h),
-                child: _SurveyQuestionCard(
-                  index: index + 1,
-                  question: question,
-                  value: _responses[question.id],
-                  isUploading: _uploadingQuestionId == question.id,
-                  onChanged: (dynamic value) {
-                    setState(() {
-                      _responses[question.id] = value;
-                    });
-                  },
-                  onSelectDate: () => _selectDate(question),
-                  onSelectTime: () => _selectTime(question),
-                  onUploadTap: () => _openUploadChooser(question),
-                ),
-              );
-            },
-          ),
+          ...widget.template.questions.asMap().entries.map((
+            MapEntry<int, SurveyQuestion> entry,
+          ) {
+            final int index = entry.key;
+            final SurveyQuestion question = entry.value;
+            return Padding(
+              padding: EdgeInsets.only(bottom: 14.h),
+              child: _SurveyQuestionCard(
+                index: index + 1,
+                question: question,
+                value: _responses[question.id],
+                isUploading: _uploadingQuestionId == question.id,
+                onChanged: (dynamic value) {
+                  setState(() {
+                    _responses[question.id] = value;
+                  });
+                },
+                onSelectDate: () => _selectDate(question),
+                onSelectTime: () => _selectTime(question),
+                onUploadTap: () => _openUploadChooser(question),
+              ),
+            );
+          }),
           SizedBox(height: 8.h),
           SizedBox(
             width: double.infinity,
@@ -1262,10 +1440,8 @@ class _SurveyQuestionCard extends StatelessWidget {
         initialValue: value as String?,
         items: question.options
             .map(
-              (String option) => DropdownMenuItem<String>(
-                value: option,
-                child: Text(option),
-              ),
+              (String option) =>
+                  DropdownMenuItem<String>(value: option, child: Text(option)),
             )
             .toList(),
         onChanged: (String? next) => onChanged(next),
@@ -1365,7 +1541,9 @@ class _SurveyQuestionCard extends StatelessWidget {
                         ),
                       )
                     : Text(
-                        upload == null ? 'Upload Attachment' : 'Replace Attachment',
+                        upload == null
+                            ? 'Upload Attachment'
+                            : 'Replace Attachment',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13.sp,
                           fontWeight: FontWeight.w800,
