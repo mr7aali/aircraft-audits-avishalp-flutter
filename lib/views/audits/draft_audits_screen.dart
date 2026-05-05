@@ -130,11 +130,18 @@ class _DraftAuditsScreenState extends State<DraftAuditsScreen> {
       padding: EdgeInsets.all(18.w),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: <Color>[Color(0xFF0F172A), Color(0xFF0F766E)],
+          colors: <Color>[Color(0xFF0F172A), Color(0xFF2563EB)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24.r),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: const Color(0xFF2563EB).withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
