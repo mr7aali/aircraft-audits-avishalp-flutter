@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../utils/app_colors.dart';
 import '../forms/survey_hub/survey_hub_screen.dart';
-import 'home_tab.dart';
 
 class QuickStartTab extends StatelessWidget {
   const QuickStartTab({super.key});
@@ -50,8 +49,6 @@ class QuickStartTab extends StatelessWidget {
                   onTap: () => Get.to(() => const SurveyHubScreen()),
                 ),
               ),
-              SizedBox(height: 24.h),
-              const QuickAccessSection(title: 'Quick Start'),
               SizedBox(height: 24.h),
             ],
           ),
