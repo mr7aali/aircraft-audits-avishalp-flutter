@@ -78,6 +78,11 @@ class AviationController extends GetxController {
       return;
     }
 
+    if (_session.availableContracts.isNotEmpty && _session.activeContract.isEmpty) {
+      activeAirport.setError('Select an airline contract to load inbound flights.');
+      return;
+    }
+
     activeAirport.setLoading();
 
     try {

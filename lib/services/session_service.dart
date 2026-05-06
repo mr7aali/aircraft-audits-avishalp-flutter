@@ -56,6 +56,25 @@ class SessionService {
   String get activeRoleName =>
       (activeStation?['roleName'] as String?)?.trim().toUpperCase() ?? '';
 
+  String get activeContract =>
+      (activeStation?['activeContract'] as String?)?.trim() ?? '';
+
+  List<String> get availableContracts {
+    final raw = activeStation?['availableContracts'];
+    if (raw is! List) {
+      return const <String>[];
+    }
+
+    return raw
+        .map((entry) => entry?.toString().trim() ?? '')
+        .where((entry) => entry.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  bool get hasCompleteOperationalContext =>
+      activeStationId.isNotEmpty &&
+      (availableContracts.isEmpty || activeContract.isNotEmpty);
+
   bool get isEmployeeRole =>
       activeRoleCode == 'EMPLOYEE' || activeRoleName == 'EMPLOYEE';
 
