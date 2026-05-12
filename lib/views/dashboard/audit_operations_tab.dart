@@ -335,61 +335,70 @@ class _AuditOperationsTabState extends State<AuditOperationsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF5F7FB),
-      child: RefreshIndicator(
-        color: AppColors.mainAppColor,
-        onRefresh: () => _loadData(showLoader: false),
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeader()),
-            SliverToBoxAdapter(child: _buildSummaryCards()),
-            SliverToBoxAdapter(child: _buildFilters()),
-            if (_isLoading)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_errorMessage != null)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _MessageState(
-                  icon: Icons.cloud_off_outlined,
-                  title: 'Audit operations unavailable',
-                  message: _errorMessage!,
-                  actionLabel: 'Try Again',
-                  onAction: _loadData,
-                ),
-              )
-            else if (_records.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _MessageState(
-                  icon: Icons.assignment_turned_in_outlined,
-                  title: 'No audit records',
-                  message: 'System-wide submitted audits will appear here.',
-                ),
-              )
-            else
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 28.h),
-                sliver: SliverList.separated(
-                  itemCount: _records.length,
-                  separatorBuilder: (_, _) => SizedBox(height: 12.h),
-                  itemBuilder: (context, index) => _AuditRecordCard(
-                    record: _records[index],
-                    onTap: _openRecord,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FB),
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: Container(
+          color: const Color(0xFFF5F7FB),
+          child: RefreshIndicator(
+            color: AppColors.mainAppColor,
+            onRefresh: () => _loadData(showLoader: false),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(child: _buildHeader(context)),
+                SliverToBoxAdapter(child: _buildSummaryCards()),
+                SliverToBoxAdapter(child: _buildFilters()),
+                if (_isLoading)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_errorMessage != null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _MessageState(
+                      icon: Icons.cloud_off_outlined,
+                      title: 'Audit operations unavailable',
+                      message: _errorMessage!,
+                      actionLabel: 'Try Again',
+                      onAction: _loadData,
+                    ),
+                  )
+                else if (_records.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _MessageState(
+                      icon: Icons.assignment_turned_in_outlined,
+                      title: 'No audit records',
+                      message: 'System-wide submitted audits will appear here.',
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 28.h),
+                    sliver: SliverList.separated(
+                      itemCount: _records.length,
+                      separatorBuilder: (_, _) => SizedBox(height: 12.h),
+                      itemBuilder: (context, index) => _AuditRecordCard(
+                        record: _records[index],
+                        onTap: _openRecord,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
+    final canPop = Navigator.of(context).canPop();
+
     return Container(
       padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 22.h),
       decoration: const BoxDecoration(
@@ -398,6 +407,18 @@ class _AuditOperationsTabState extends State<AuditOperationsTab> {
       ),
       child: Row(
         children: [
+          if (canPop) ...[
+            IconButton(
+              tooltip: 'Back',
+              onPressed: () => Get.back(),
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: AppColors.from_heading,
+                size: 24.sp,
+              ),
+            ),
+            SizedBox(width: 4.w),
+          ],
           Container(
             width: 48.w,
             height: 48.w,
@@ -417,7 +438,7 @@ class _AuditOperationsTabState extends State<AuditOperationsTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Audit Operations',
+                  'All Submitted Audits',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 22.sp,
                     fontWeight: FontWeight.w800,
