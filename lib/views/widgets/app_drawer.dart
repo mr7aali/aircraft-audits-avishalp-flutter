@@ -9,6 +9,7 @@ import '../../services/session_service.dart';
 import '../../utils/app_colors.dart';
 import '../audits/draft_audits_screen.dart';
 import '../audits/my_audits_screen.dart';
+import '../dashboard/audit_operations_tab.dart';
 import '../../config/app_permission_codes.dart';
 import '../forms/survey_hub/admin_submitted_forms_screen.dart';
 import '../forms/survey_hub/my_submitted_forms_screen.dart';
@@ -227,6 +228,14 @@ class _AppDrawerState extends State<AppDrawer> {
                   onTap: () {
                     Get.back();
                     Get.to(() => const MySubmittedFormsScreen());
+                  },
+                ),
+                DrawerTile(
+                  icon: Icons.manage_search_outlined,
+                  title: 'All Submitted Audits',
+                  onTap: () {
+                    Get.back();
+                    Get.to(() => const AuditOperationsTab());
                   },
                 ),
                 if (canViewAdminSubmissions)

@@ -4,11 +4,11 @@ import 'package:get/get.dart';
 import 'package:motion_tab_bar/MotionTabBar.dart';
 import 'package:motion_tab_bar/MotionTabBarController.dart';
 import '../../utils/app_colors.dart';
-import 'audit_operations_tab.dart';
 import 'home_tab.dart';
 import 'audit_tab.dart';
 import 'quick_start_tab.dart';
 import 'profile_tab.dart';
+import 'reports_tab.dart';
 import '../widgets/app_drawer.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -64,7 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             AuditTab(),
             QuickStartTab(),
             InboxScreen(),
-            AuditOperationsTab(),
+            ReportsTab(),
           ],
         ),
       ),
@@ -72,13 +72,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         controller: _motionTabBarController,
         initialSelectedTab: "Home",
         useSafeArea: true,
-        labels: const ["Home", "Audit", "Quick Start", "Chat", "Ops"],
+        labels: const ["Home", "Audit", "Quick Start", "Chat", "Reports"],
         icons: const [
           Icons.home_outlined,
           Icons.assignment_outlined,
           Icons.flash_on_outlined,
           Icons.chat_bubble_outline,
-          Icons.manage_search_outlined,
+          Icons.summarize_outlined,
         ],
         badges: const [null, null, null, null, null],
         tabSize: 50,
