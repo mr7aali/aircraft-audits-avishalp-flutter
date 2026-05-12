@@ -17,10 +17,17 @@ class _C {
 }
 
 class _StationOption {
-  const _StationOption({required this.id, required this.label});
+  const _StationOption({
+    required this.id,
+    required this.label,
+    required this.availableContracts,
+    this.activeContract,
+  });
 
   final String id;
   final String label;
+  final List<String> availableContracts;
+  final String? activeContract;
 }
 
 class StationSelectionScreen extends StatefulWidget {
@@ -42,6 +49,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
   final SessionService _session = Get.find<SessionService>();
 
   String? _selectedStationId;
+  String? _selectedContract;
   bool _isLoading = true;
   bool _isSubmitting = false;
   List<_StationOption> _stations = const <_StationOption>[];
@@ -56,6 +64,15 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
       return _session.firstName;
     }
     return 'User';
+  }
+
+  _StationOption? get _selectedStation {
+    for (final station in _stations) {
+      if (station.id == _selectedStationId) {
+        return station;
+      }
+    }
+    return null;
   }
 
   @override
@@ -98,6 +115,11 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
             return _StationOption(
               id: (station['stationId'] as String?) ?? '',
               label: label.isEmpty ? 'Station' : label,
+              availableContracts: ((station['availableContracts'] as List?) ?? [])
+                  .map((entry) => entry?.toString().trim() ?? '')
+                  .where((entry) => entry.isNotEmpty)
+                  .toList(growable: false),
+              activeContract: (station['activeContract'] as String?)?.trim(),
             );
           })
           .where((station) => station.id.isNotEmpty)
@@ -122,15 +144,26 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
         }
       }
 
+      final persistedActiveContract =
+          (activeStation?['activeContract'] as String?)?.trim() ?? '';
+
       if (mounted) {
         setState(() {
           _stations = mappedStations;
           _selectedStationId = preselected?.id;
+          _selectedContract = persistedActiveContract.isNotEmpty
+              ? persistedActiveContract
+              : preselected?.availableContracts.length == 1
+              ? preselected?.availableContracts.first
+              : null;
           _isLoading = false;
         });
       }
 
-      if (!widget.forceReselect && mappedStations.length == 1 && mounted) {
+      if (!widget.forceReselect &&
+          mappedStations.length == 1 &&
+          mappedStations.first.availableContracts.length <= 1 &&
+          mounted) {
         await _continueWithStation(mappedStations.first);
       }
     } on ApiException catch (error) {
@@ -194,10 +227,26 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
       return;
     }
 
+    final availableContracts = selected.availableContracts;
+    final selectedContract = _selectedContract?.trim() ?? '';
+    if (availableContracts.isNotEmpty && selectedContract.isEmpty) {
+      Get.snackbar(
+        'Airline Required',
+        'Please select the airline contract you want to sign into.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
-      final activeStation = await _api.selectStation(selected.id);
+      final activeStation = await _api.selectStation(
+        selected.id,
+        contract: selectedContract.isEmpty ? null : selectedContract,
+      );
       _session.saveActiveStation(activeStation);
 
       if (!mounted) {
@@ -311,7 +360,7 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                             ? 'Loading your station access'
                             : _stations.isEmpty
                             ? 'No station assigned yet'
-                            : 'Select your assigned station to begin',
+                            : 'Select your airport and airline contract to begin',
                         style: GoogleFonts.dmSans(
                           fontSize: 13.sp,
                           color: Colors.grey.shade500,
@@ -320,19 +369,35 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                       ),
                       SizedBox(height: 14.h),
                       _buildStationList(),
+                      if (_selectedStation != null &&
+                          _selectedStation!.availableContracts.isNotEmpty) ...[
+                        SizedBox(height: 18.h),
+                        _buildContractPicker(_selectedStation!),
+                      ],
                       SizedBox(height: 16.h),
                       GestureDetector(
                         onTap:
-                            (_isLoading || _stations.isEmpty || _isSubmitting)
-                            ? null
-                            : () => _continueWithStation(),
+                            (_isLoading ||
+                                    _stations.isEmpty ||
+                                    _isSubmitting ||
+                                    (_selectedStation?.availableContracts
+                                                .isNotEmpty ==
+                                            true &&
+                                        (_selectedContract?.isEmpty ?? true)))
+                                ? null
+                                : () => _continueWithStation(),
                         child: Container(
                           height: 54.h,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: (_isLoading || _stations.isEmpty)
-                                ? _C.blue.withOpacity(0.45)
-                                : _C.blue,
+                             color: (_isLoading ||
+                                     _stations.isEmpty ||
+                                     (_selectedStation?.availableContracts
+                                                 .isNotEmpty ==
+                                             true &&
+                                         (_selectedContract?.isEmpty ?? true)))
+                                 ? _C.blue.withOpacity(0.45)
+                                 : _C.blue,
                             borderRadius: BorderRadius.circular(30.r),
                           ),
                           alignment: Alignment.center,
@@ -512,6 +577,10 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
                           onTap: () {
                             setState(() {
                               _selectedStationId = station.id;
+                              _selectedContract =
+                                  station.availableContracts.length == 1
+                                  ? station.availableContracts.first
+                                  : station.activeContract;
                             });
                           },
                           child: Container(
@@ -609,6 +678,76 @@ class _StationSelectionScreenState extends State<StationSelectionScreen> {
             borderRadius: BorderRadius.circular(3.r),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildContractPicker(_StationOption station) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(22.r),
+        border: Border.all(color: _C.border, width: 1.3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.business_center_outlined, color: _C.blue, size: 18.sp),
+              SizedBox(width: 8.w),
+              Text(
+                'Airline Contracts',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: _C.ink,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          Text(
+            'Choose the airline you want to sign into for ${station.label}.',
+            style: GoogleFonts.dmSans(
+              fontSize: 12.sp,
+              color: _C.muted,
+              height: 1.45,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: station.availableContracts.map((contract) {
+              final isSelected = _selectedContract == contract;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedContract = contract),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                  decoration: BoxDecoration(
+                    color: isSelected ? _C.blue : Colors.white,
+                    borderRadius: BorderRadius.circular(16.r),
+                    border: Border.all(
+                      color: isSelected ? _C.blue : _C.border,
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Text(
+                    contract,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? Colors.white : _C.ink,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }

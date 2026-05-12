@@ -647,14 +647,22 @@ class _HiddenObjectAuditWorkflowScreenState
       _aircraftOptions
         ..clear()
         ..addAll(aircraftOptions);
-      _selectedShipNumber ??= fleetOptions.isNotEmpty
-          ? fleetOptions.first.shipNumber
+      _selectedShipNumber = _fleetOptions.any(
+        (item) => item.shipNumber == _selectedShipNumber,
+      )
+          ? _selectedShipNumber
           : null;
-      _selectedAircraftTypeId ??= fleetOptions.isNotEmpty
-          ? fleetOptions.first.aircraftTypeId
-          : aircraftOptions.isNotEmpty
-          ? aircraftOptions.first.id
-          : null;
+      _selectedAircraftTypeId = _selectedShipNumber != null
+          ? _fleetOptions
+                .firstWhereOrNull(
+                  (item) => item.shipNumber == _selectedShipNumber,
+                )
+                ?.aircraftTypeId
+          : (_aircraftOptions.any((item) => item.id == _selectedAircraftTypeId)
+                ? _selectedAircraftTypeId
+                : aircraftOptions.isNotEmpty
+                ? aircraftOptions.first.id
+                : null);
     });
 
     if (widget.restoreDraft) {
@@ -665,6 +673,17 @@ class _HiddenObjectAuditWorkflowScreenState
   HiddenObjectFleetOption? get _selectedFleet => _fleetOptions.firstWhereOrNull(
     (item) => item.shipNumber == _selectedShipNumber,
   );
+
+  String get _selectedShipDisplayLabel {
+    final selectedFleet = _selectedFleet;
+    if (selectedFleet == null) {
+      return '';
+    }
+
+    return selectedFleet.displayName.isEmpty
+        ? '${selectedFleet.shipNumber} - ${selectedFleet.aircraftTypeName}'
+        : '${selectedFleet.shipNumber} - ${selectedFleet.displayName}';
+  }
 
   List<HiddenObjectAircraftOption> get _availableAircraftOptions {
     final selectedFleet = _selectedFleet;
@@ -725,6 +744,43 @@ class _HiddenObjectAuditWorkflowScreenState
         _syncObjectCountToSelection();
       }
     });
+  }
+
+  void _applySelectedShip(String? shipNumber) {
+    final selected = _fleetOptions.firstWhereOrNull(
+      (item) => item.shipNumber == shipNumber,
+    );
+
+    setState(() {
+      _selectedShipNumber = shipNumber;
+      if (selected != null) {
+        _selectedAircraftTypeId = selected.aircraftTypeId;
+      }
+      _manualSelectionEnabled = false;
+      _clearCreateSelections(clearCount: true);
+    });
+  }
+
+  Future<void> _openShipNumberPicker() async {
+    if (_fleetOptions.isEmpty) {
+      return;
+    }
+
+    final selectedShip = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ShipNumberPickerSheet(
+        options: _fleetOptions,
+        selectedShipNumber: _selectedShipNumber,
+      ),
+    );
+
+    if (selectedShip == null || selectedShip == _selectedShipNumber) {
+      return;
+    }
+
+    _applySelectedShip(selectedShip);
   }
 
   Future<void> _createAudit() async {
@@ -1045,40 +1101,29 @@ class _HiddenObjectAuditWorkflowScreenState
               SizedBox(height: 18.h),
               _fieldLabel('Ship # *'),
               SizedBox(height: 8.h),
-              DropdownButtonFormField<String>(
-                // ignore: deprecated_member_use
-                value:
-                    _fleetOptions.any(
-                      (item) => item.shipNumber == _selectedShipNumber,
-                    )
-                    ? _selectedShipNumber
-                    : null,
-                decoration: _inputDecoration(),
-                items: _fleetOptions
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                        value: item.shipNumber,
-                        child: Text(
-                          item.displayName.isEmpty
-                              ? '${item.shipNumber} - ${item.aircraftTypeName}'
-                              : '${item.shipNumber} - ${item.displayName}',
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  final selected = _fleetOptions.firstWhereOrNull(
-                    (item) => item.shipNumber == value,
-                  );
-                  setState(() {
-                    _selectedShipNumber = value;
-                    if (selected != null) {
-                      _selectedAircraftTypeId = selected.aircraftTypeId;
-                    }
-                    _manualSelectionEnabled = false;
-                    _clearCreateSelections(clearCount: true);
-                  });
-                },
+              InkWell(
+                onTap: _openShipNumberPicker,
+                borderRadius: BorderRadius.circular(14.r),
+                child: InputDecorator(
+                  decoration: _inputDecoration(
+                    hintText: 'Search and select ship number',
+                    suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
+                  ),
+                  child: Text(
+                    _selectedShipDisplayLabel.isNotEmpty
+                        ? _selectedShipDisplayLabel
+                        : 'Search and select ship number',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14.sp,
+                      color: _selectedShipDisplayLabel.isNotEmpty
+                          ? _HOColors.textDark
+                          : _HOColors.textMuted,
+                      fontWeight: _selectedShipDisplayLabel.isNotEmpty
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                  ),
+                ),
               ),
               SizedBox(height: 16.h),
               _fieldLabel('Aircraft Type'),
@@ -1611,9 +1656,15 @@ class _HiddenObjectAuditWorkflowScreenState
     );
   }
 
-  InputDecoration _inputDecoration({String? hintText}) {
+  InputDecoration _inputDecoration({
+    String? hintText,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+  }) {
     return InputDecoration(
       hintText: hintText,
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
       filled: true,
       fillColor: const Color(0xFFF9FAFB),
       border: OutlineInputBorder(
@@ -1627,6 +1678,195 @@ class _HiddenObjectAuditWorkflowScreenState
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14.r),
         borderSide: const BorderSide(color: _HOColors.primary),
+      ),
+    );
+  }
+}
+
+class _ShipNumberPickerSheet extends StatefulWidget {
+  const _ShipNumberPickerSheet({
+    required this.options,
+    required this.selectedShipNumber,
+  });
+
+  final List<HiddenObjectFleetOption> options;
+  final String? selectedShipNumber;
+
+  @override
+  State<_ShipNumberPickerSheet> createState() => _ShipNumberPickerSheetState();
+}
+
+class _ShipNumberPickerSheetState extends State<_ShipNumberPickerSheet> {
+  late final TextEditingController _searchCtrl;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<HiddenObjectFleetOption> get _filteredOptions {
+    if (_query.isEmpty) {
+      return widget.options;
+    }
+
+    return widget.options.where((item) {
+      final haystack =
+          '${item.shipNumber} ${item.displayName} ${item.aircraftTypeName}'
+              .toLowerCase();
+      return haystack.contains(_query);
+    }).toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.78,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 16.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: _HOColors.border,
+                    borderRadius: BorderRadius.circular(999.r),
+                  ),
+                ),
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                'Select Ship #',
+                style: GoogleFonts.dmSans(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w700,
+                  color: _HOColors.textDark,
+                ),
+              ),
+              SizedBox(height: 8.h),
+              TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                onChanged: (value) => setState(() {
+                  _query = value.trim().toLowerCase();
+                }),
+                decoration: InputDecoration(
+                  hintText: 'Search ship number or aircraft',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  filled: true,
+                  fillColor: const Color(0xFFF9FAFB),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14.r),
+                    borderSide: const BorderSide(color: _HOColors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14.r),
+                    borderSide: const BorderSide(color: _HOColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14.r),
+                    borderSide: const BorderSide(color: _HOColors.primary),
+                  ),
+                ),
+              ),
+              SizedBox(height: 16.h),
+              Expanded(
+                child: _filteredOptions.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No ship found for this search.',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 14.sp,
+                            color: _HOColors.textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _filteredOptions.length,
+                        separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                        itemBuilder: (context, index) {
+                          final item = _filteredOptions[index];
+                          final isSelected =
+                              item.shipNumber == widget.selectedShipNumber;
+                          final subtitle = item.displayName.isEmpty
+                              ? item.aircraftTypeName
+                              : '${item.displayName} - ${item.aircraftTypeName}';
+
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(16.r),
+                            onTap: () =>
+                                Navigator.of(context).pop(item.shipNumber),
+                            child: Container(
+                              padding: EdgeInsets.all(14.w),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? _HOColors.primary.withOpacity(0.08)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(16.r),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? _HOColors.primary
+                                      : _HOColors.border,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.shipNumber,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 15.sp,
+                                            fontWeight: FontWeight.w700,
+                                            color: _HOColors.textDark,
+                                          ),
+                                        ),
+                                        SizedBox(height: 4.h),
+                                        Text(
+                                          subtitle,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 12.sp,
+                                            color: _HOColors.textMuted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      color: _HOColors.primary,
+                                      size: 20.sp,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -257,11 +257,17 @@ class AppApiService {
     return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> selectStation(String stationId) async {
+  Future<Map<String, dynamic>> selectStation(
+    String stationId, {
+    String? contract,
+  }) async {
     final data = await _send(
       'POST',
       'stations/select',
-      body: {'stationId': stationId},
+      body: {
+        'stationId': stationId,
+        if (contract != null && contract.trim().isNotEmpty) 'contract': contract,
+      },
     );
     return _asMap(data);
   }

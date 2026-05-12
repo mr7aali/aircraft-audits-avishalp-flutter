@@ -12,6 +12,10 @@ import '../audits/my_audits_screen.dart';
 import '../../config/app_permission_codes.dart';
 import '../forms/survey_hub/admin_submitted_forms_screen.dart';
 import '../forms/survey_hub/my_submitted_forms_screen.dart';
+import '../forms/Cabin%20Quality%20Audit/CabinQualityAuditList.dart';
+import '../forms/LAV%20Safety%20Observation/LavSafetyObservationScreen.dart';
+import '../forms/cabin%20security%20search/CabinSecurityTrainingScreen.dart';
+import '../forms/hidden_object_audit/hidden_object_audit_screen.dart';
 
 class AppDrawer extends StatefulWidget {
   final VoidCallback? onDashboardTap;
@@ -73,6 +77,23 @@ class _AppDrawerState extends State<AppDrawer> {
     final canViewAdminSubmissions = session.hasPermission(
       AppPermissionCodes.adminDashboardSubmissions,
     );
+    final showLavSafety = session.hasPermission(
+      AppPermissionCodes.lavSafetyObservation,
+    );
+    final showCabinQuality = session.hasPermission(
+      AppPermissionCodes.cabinQualityAudit,
+    );
+    final showCabinSecurity = session.hasPermission(
+      AppPermissionCodes.cabinSecuritySearchTraining,
+    );
+    final showHiddenObjectAudit = session.hasPermission(
+      AppPermissionCodes.hiddenObjectAudit,
+    );
+    final hasAuditWorkflowAccess =
+        showLavSafety ||
+        showCabinQuality ||
+        showCabinSecurity ||
+        showHiddenObjectAudit;
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -118,6 +139,7 @@ class _AppDrawerState extends State<AppDrawer> {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
+                _DrawerSectionHeader(title: 'Workspace'),
                 DrawerTile(
                   icon: Icons.dashboard_outlined,
                   title: 'Dashboard',
@@ -134,6 +156,55 @@ class _AppDrawerState extends State<AppDrawer> {
                     widget.onProfileTap?.call();
                   },
                 ),
+                if (hasAuditWorkflowAccess) ...[
+                  const SizedBox(height: 8),
+                  _DrawerSectionHeader(
+                    title: 'Audit Workflows',
+                    subtitle: 'Start the right audit flow for your shift.',
+                  ),
+                  if (showLavSafety)
+                    DrawerTile(
+                      icon: Icons.clean_hands,
+                      title: 'Lav Safety Observation',
+                      iconColor: const Color(0xFF0EA5E9),
+                      onTap: () {
+                        Get.back();
+                        Get.to(() => LavSafetyObservationScreen());
+                      },
+                    ),
+                  if (showCabinQuality)
+                    DrawerTile(
+                      icon: Icons.check_circle_outline,
+                      title: 'Cabin Quality Audit',
+                      iconColor: const Color(0xFF10B981),
+                      onTap: () {
+                        Get.back();
+                        Get.to(() => CabinQualityAuditListScreen());
+                      },
+                    ),
+                  if (showCabinSecurity)
+                    DrawerTile(
+                      icon: Icons.security,
+                      title: 'Cabin Security Search Training',
+                      iconColor: const Color(0xFFF59E0B),
+                      onTap: () {
+                        Get.back();
+                        Get.to(() => CabinSecurityScreen());
+                      },
+                    ),
+                  if (showHiddenObjectAudit)
+                    DrawerTile(
+                      icon: Icons.search,
+                      title: 'Hidden Object Audit',
+                      iconColor: const Color(0xFF8B5CF6),
+                      onTap: () {
+                        Get.back();
+                        Get.to(() => const HiddenObjectAuditListScreen());
+                      },
+                    ),
+                ],
+                const SizedBox(height: 8),
+                _DrawerSectionHeader(title: 'My Activity'),
                 DrawerTile(
                   icon: Icons.history_outlined,
                   title: 'My Audits',
@@ -181,7 +252,8 @@ class _AppDrawerState extends State<AppDrawer> {
                     );
                   },
                 ),
-                const Divider(),
+                const SizedBox(height: 8),
+                _DrawerSectionHeader(title: 'App'),
                 DrawerTile(
                   icon: Icons.settings_outlined,
                   title: 'Settings',
@@ -229,6 +301,46 @@ class _AppDrawerState extends State<AppDrawer> {
             onTap: _logout,
           ),
           SizedBox(height: 20.h),
+        ],
+      ),
+    );
+  }
+}
+
+class _DrawerSectionHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+
+  const _DrawerSectionHeader({required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 8.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF64748B),
+              letterSpacing: 0.8,
+            ),
+          ),
+          if (subtitle != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              subtitle!,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11.sp,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF94A3B8),
+                height: 1.35,
+              ),
+            ),
+          ],
         ],
       ),
     );

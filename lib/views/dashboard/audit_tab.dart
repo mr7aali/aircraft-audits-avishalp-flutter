@@ -28,14 +28,18 @@ class _AuditTabState extends State<AuditTab> {
   String _statusFilter = 'all';
   bool _onlyWithGate = false;
   String _sortOption = 'arrival_asc';
-  String _selectedMovement = 'departure';
+  String _selectedMovement = 'arrival';
 
   @override
   void initState() {
     super.initState();
-    _aviationController = Get.isRegistered<AviationController>()
+    final alreadyRegistered = Get.isRegistered<AviationController>();
+    _aviationController = alreadyRegistered
         ? Get.find<AviationController>()
         : Get.put(AviationController());
+    if (alreadyRegistered) {
+      _aviationController.fetchFlights();
+    }
     _searchController.addListener(_handleSearchChanged);
   }
 

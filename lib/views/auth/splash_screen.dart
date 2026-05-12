@@ -128,12 +128,14 @@ class _SplashScreenState extends State<SplashScreen>
           final activeStation = await _api.getActiveStation();
           if (activeStation != null) {
             _sessionService.saveActiveStation(activeStation);
+            hasStationSession = _sessionService.hasCompleteOperationalContext;
           } else {
             _sessionService.saveActiveStation(null);
             hasStationSession = false;
           }
         } catch (_) {
           // Keep the locally persisted station if refresh is temporarily unavailable.
+          hasStationSession = _sessionService.hasCompleteOperationalContext;
         }
 
         if (hasStationSession) {
