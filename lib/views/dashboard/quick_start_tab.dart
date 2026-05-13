@@ -20,35 +20,13 @@ class QuickStartTab extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
+        top: false,
         bottom: false,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 8.h),
-                child: Text(
-                  'Quick Start',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 24.sp,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.dark,
-                    letterSpacing: -0.6,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.w),
-                child: Text(
-                  'Open the tools and shortcuts you use most.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.from_heading,
-                  ),
-                ),
-              ),
-              SizedBox(height: 20.h),
+              SizedBox(height: 16.h),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20.w),
                 child: _FormsCreationLaunchCard(
@@ -56,7 +34,7 @@ class QuickStartTab extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 24.h),
-              const QuickAccessSection(title: 'Quick Start'),
+              const QuickAccessSection(),
               SizedBox(height: 24.h),
             ],
           ),
@@ -140,7 +118,7 @@ class _QuickAccessGrid extends StatelessWidget {
       title,
       'This feature will be available soon.',
       snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.black.withOpacity(0.8),
+      backgroundColor: Colors.black.withValues(alpha: 0.8),
       colorText: Colors.white,
       margin: EdgeInsets.all(16.w),
       duration: const Duration(seconds: 2),
@@ -231,7 +209,7 @@ class _QuickAccessGrid extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16.r),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
+                    color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -245,7 +223,7 @@ class _QuickAccessGrid extends StatelessWidget {
                   Container(
                     padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: iColor.withOpacity(0.1),
+                      color: iColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12.r),
                     ),
                     child: Icon(item['icon'] as IconData, color: iColor, size: 24.sp),

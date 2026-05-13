@@ -522,6 +522,7 @@ class _AuditTabState extends State<AuditTab> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
+        top: false,
         child: RefreshIndicator(
           onRefresh: _refreshFlights,
           child: SingleChildScrollView(
@@ -530,20 +531,7 @@ class _AuditTabState extends State<AuditTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(height: 24.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Text(
-                    "Flight Audits",
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 24.sp,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.dark,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 14.h),
                 _buildRefreshHeader(_aviationController),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),

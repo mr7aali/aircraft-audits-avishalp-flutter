@@ -143,7 +143,10 @@ class _ReportsTabState extends State<ReportsTab> {
     if (_isLoading && _summary.isEmpty) {
       return const Scaffold(
         backgroundColor: Color(0xFFF6F8FB),
-        body: SafeArea(child: Center(child: CircularProgressIndicator())),
+        body: SafeArea(
+          top: false,
+          child: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
@@ -151,6 +154,7 @@ class _ReportsTabState extends State<ReportsTab> {
       return Scaffold(
         backgroundColor: const Color(0xFFF6F8FB),
         body: SafeArea(
+          top: false,
           child: _ErrorState(
             title: 'Reports unavailable',
             message: _errorMessage!,
@@ -166,6 +170,7 @@ class _ReportsTabState extends State<ReportsTab> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       body: SafeArea(
+        top: false,
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _loadSummary,
@@ -176,8 +181,6 @@ class _ReportsTabState extends State<ReportsTab> {
             padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 28.h),
             children: <Widget>[
               _PageHeader(
-                title: 'Reports',
-                subtitle: 'Live audit ratios with tap-to-open details.',
                 updatedLabel: _generatedLabel,
                 onRefresh: _loadSummary,
                 isRefreshing: _isLoading,
@@ -469,65 +472,46 @@ class _ReportMetricDetailScreenState extends State<_ReportMetricDetailScreen> {
 
 class _PageHeader extends StatelessWidget {
   const _PageHeader({
-    required this.title,
-    required this.subtitle,
     required this.updatedLabel,
     required this.onRefresh,
     required this.isRefreshing,
   });
 
-  final String title;
-  final String subtitle;
   final String updatedLabel;
   final Future<void> Function() onRefresh;
   final bool isRefreshing;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                title,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 22.sp,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.dark,
-                ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              'Updated $updatedLabel',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF64748B),
               ),
-              SizedBox(height: 4.h),
-              Text(
-                subtitle,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12.5.sp,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.from_heading,
-                ),
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                updatedLabel,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 11.5.sp,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        IconButton(
-          onPressed: isRefreshing ? null : onRefresh,
-          icon: Icon(
-            Icons.refresh_rounded,
-            color: AppColors.mainAppColor,
-            size: 22.sp,
+          IconButton(
+            onPressed: isRefreshing ? null : onRefresh,
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: AppColors.mainAppColor,
+              size: 22.sp,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
