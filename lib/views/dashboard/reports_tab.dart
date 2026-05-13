@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:avislap/services/api_exception.dart';
 import 'package:avislap/services/app_api_service.dart';
+import 'package:avislap/services/report_export_service.dart';
 import 'package:avislap/utils/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -18,8 +19,10 @@ class ReportsTab extends StatefulWidget {
 
 class _ReportsTabState extends State<ReportsTab> {
   final AppApiService _api = Get.find<AppApiService>();
+  final ReportExportService _reportExportService = ReportExportService();
 
   bool _isLoading = true;
+  bool _isExporting = false;
   String? _errorMessage;
   int _selectedIndex = 0;
   Map<String, dynamic> _summary = const <String, dynamic>{};
@@ -129,6 +132,12 @@ class _ReportsTabState extends State<ReportsTab> {
   _RatioSummary get _overallTotals =>
       _RatioSummary.fromMap(_asMap(_summary['totals']));
 
+  bool get _canExportSelectedBundle {
+    final _ReportBundleSummaryView bundle = _selectedBundle;
+    return bundle.auditCount > 0 &&
+        bundle.metrics.any((metric) => metric.available);
+  }
+
   String get _generatedLabel {
     final String raw = _summary['generatedAt']?.toString() ?? '';
     final DateTime? parsed = DateTime.tryParse(raw)?.toLocal();
@@ -136,6 +145,98 @@ class _ReportsTabState extends State<ReportsTab> {
       return 'Live backend data';
     }
     return DateFormat('MMM d, h:mm a').format(parsed);
+  }
+
+  Future<void> _exportSelectedBundle() async {
+    final _ReportBundleMeta meta = _selectedMeta;
+    final _ReportBundleSummaryView bundle = _selectedBundle;
+
+    if (_isExporting) {
+      return;
+    }
+
+    if (bundle.auditCount <= 0 ||
+        bundle.metrics.every((metric) => !metric.available)) {
+      Get.snackbar(
+        'Nothing to export',
+        'No live ${meta.shortLabel} report data is available yet.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.black.withValues(alpha: 0.82),
+        colorText: Colors.white,
+        margin: EdgeInsets.all(16.w),
+        duration: const Duration(seconds: 2),
+      );
+      return;
+    }
+
+    setState(() => _isExporting = true);
+
+    try {
+      final Map<String, dynamic> overview = await _api.getReportsOverview();
+      final ReportExportBundleDocument document =
+          ReportExportBundleDocument.fromOverview(
+            overview: overview,
+            bundleKey: meta.key,
+            fallbackTitle: meta.title,
+            fallbackSubtitle: meta.subtitle,
+            areaMeaning: meta.areaMeaning,
+            sectionMeaning: meta.sectionMeaning,
+            accentColorValue: meta.accent.toARGB32(),
+          );
+
+      if (!document.hasData) {
+        throw const ApiException(
+          'The selected report does not contain exportable data yet.',
+        );
+      }
+
+      final ReportExportResult result = await _reportExportService
+          .exportBundlePdf(document);
+
+      if (!mounted) {
+        return;
+      }
+
+      Get.snackbar(
+        'PDF ready',
+        'Exported ${result.fileName}.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.black.withValues(alpha: 0.82),
+        colorText: Colors.white,
+        margin: EdgeInsets.all(16.w),
+        duration: const Duration(seconds: 3),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      Get.snackbar(
+        'Export failed',
+        error.message,
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xFFB91C1C),
+        colorText: Colors.white,
+        margin: EdgeInsets.all(16.w),
+        duration: const Duration(seconds: 3),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      Get.snackbar(
+        'Export failed',
+        'Unable to generate the PDF right now.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xFFB91C1C),
+        colorText: Colors.white,
+        margin: EdgeInsets.all(16.w),
+        duration: const Duration(seconds: 3),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
   }
 
   @override
@@ -169,6 +270,16 @@ class _ReportsTabState extends State<ReportsTab> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
+      floatingActionButton: _ExportFloatingButton(
+        meta: meta,
+        bundle: bundle,
+        enabled: _canExportSelectedBundle && !_isExporting,
+        isExporting: _isExporting,
+        onPressed: _canExportSelectedBundle && !_isExporting
+            ? _exportSelectedBundle
+            : null,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
         top: false,
         bottom: false,
@@ -178,7 +289,7 @@ class _ReportsTabState extends State<ReportsTab> {
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 28.h),
+            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 116.h),
             children: <Widget>[
               _PageHeader(
                 updatedLabel: _generatedLabel,
@@ -665,6 +776,73 @@ class _OverviewCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ExportFloatingButton extends StatelessWidget {
+  const _ExportFloatingButton({
+    required this.meta,
+    required this.bundle,
+    required this.enabled,
+    required this.isExporting,
+    required this.onPressed,
+  });
+
+  final _ReportBundleMeta meta;
+  final _ReportBundleSummaryView bundle;
+  final bool enabled;
+  final bool isExporting;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 220),
+      opacity: enabled || isExporting ? 1 : 0.86,
+      child: FloatingActionButton.extended(
+        onPressed: onPressed,
+        backgroundColor: enabled ? meta.accent : const Color(0xFF94A3B8),
+        foregroundColor: Colors.white,
+        elevation: enabled ? 8 : 2,
+        extendedPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 0),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18.r),
+        ),
+        icon: isExporting
+            ? SizedBox(
+                width: 18.w,
+                height: 18.w,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2.1,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Icon(Icons.file_download_rounded, size: 20.sp),
+        label: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              isExporting ? 'Preparing PDF...' : 'Export Report',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12.8.sp,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              enabled
+                  ? '${meta.shortLabel} • ${bundle.auditCount} audits'
+                  : 'No exportable data yet',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 10.2.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.84),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -240,6 +240,17 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> getReportsOverview({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'reports/overview',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> getReportMetricDetail({
     required String bundleKey,
     required String metricKey,
