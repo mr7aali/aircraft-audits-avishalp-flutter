@@ -283,6 +283,7 @@ class _InboxScreenState extends State<InboxScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
+        top: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -302,15 +303,6 @@ class _InboxScreenState extends State<InboxScreen> {
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Get.back(),
-            child: Icon(
-              Icons.arrow_back,
-              color: AppColors.textDark,
-              size: 22.sp,
-            ),
-          ),
-          SizedBox(width: 12.w),
           Expanded(
             child: Container(
               height: 44.h,
@@ -1039,7 +1031,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),

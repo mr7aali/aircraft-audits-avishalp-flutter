@@ -5,6 +5,7 @@ import 'package:avislap/views/forms/cabin%20security%20search/cabin_secuirity.da
 import 'package:avislap/views/forms/hidden_object_audit/hidden_object_audit_screen.dart';
 import 'package:avislap/config/app_permission_codes.dart';
 import 'package:avislap/services/session_service.dart';
+import 'package:avislap/services/audit_draft_store.dart';
 import 'package:avislap/widgets/flight_card.dart';
 import 'package:avislap/controllers/aviation_controller.dart';
 import 'package:avislap/models/aviationstack_model.dart';
@@ -12,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import '../../utils/app_colors.dart';
 
 class AuditTab extends StatefulWidget {
@@ -22,13 +24,15 @@ class AuditTab extends StatefulWidget {
 }
 
 class _AuditTabState extends State<AuditTab> {
+  static const int _pageSize = 12;
+
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   late final AviationController _aviationController;
   String _searchQuery = '';
-  String _statusFilter = 'all';
   bool _onlyWithGate = false;
   String _sortOption = 'arrival_asc';
-  String _selectedMovement = 'arrival';
+  int _visibleFlightCount = _pageSize;
 
   @override
   void initState() {
@@ -41,12 +45,16 @@ class _AuditTabState extends State<AuditTab> {
       _aviationController.fetchFlights();
     }
     _searchController.addListener(_handleSearchChanged);
+    _scrollController.addListener(_handleScroll);
   }
 
   @override
   void dispose() {
     _searchController
       ..removeListener(_handleSearchChanged)
+      ..dispose();
+    _scrollController
+      ..removeListener(_handleScroll)
       ..dispose();
     super.dispose();
   }
@@ -56,7 +64,22 @@ class _AuditTabState extends State<AuditTab> {
     if (next == _searchQuery) {
       return;
     }
-    setState(() => _searchQuery = next);
+    setState(() {
+      _searchQuery = next;
+      _visibleFlightCount = _pageSize;
+    });
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    if (_scrollController.position.extentAfter > 320) {
+      return;
+    }
+
+    _loadMoreFlights();
   }
 
   String _normalizeSearchValue(String value) {
@@ -95,18 +118,18 @@ class _AuditTabState extends State<AuditTab> {
     return haystack.contains(normalizedQuery);
   }
 
+  List<AviationFlight> _landedInboundFlights(List<AviationFlight> flights) {
+    return flights
+        .where((flight) {
+          return flight.direction.toLowerCase() == 'arrival' &&
+              flight.status.toLowerCase() == 'landed';
+        })
+        .toList(growable: false);
+  }
+
   List<AviationFlight> _applyFilters(List<AviationFlight> flights) {
-    final filtered = flights.where((flight) {
-      if (flight.direction.toLowerCase() != _selectedMovement) {
-        return false;
-      }
-
+    final filtered = _landedInboundFlights(flights).where((flight) {
       if (!_matchesSearch(flight, _searchQuery)) {
-        return false;
-      }
-
-      if (_statusFilter != 'all' &&
-          flight.status.toLowerCase() != _statusFilter.toLowerCase()) {
         return false;
       }
 
@@ -148,11 +171,32 @@ class _AuditTabState extends State<AuditTab> {
     return filtered;
   }
 
+  List<AviationFlight> _visibleFlightsSlice(List<AviationFlight> flights) {
+    if (flights.length <= _visibleFlightCount) {
+      return flights;
+    }
+
+    return flights.take(_visibleFlightCount).toList(growable: false);
+  }
+
+  void _loadMoreFlights() {
+    final filteredCount = _applyFilters(
+      _aviationController.activeAirport.allFlights,
+    ).length;
+    if (_visibleFlightCount >= filteredCount) {
+      return;
+    }
+
+    setState(() {
+      _visibleFlightCount = (_visibleFlightCount + _pageSize).clamp(
+        _pageSize,
+        filteredCount,
+      );
+    });
+  }
+
   int _activeFilterCount() {
     var count = 0;
-    if (_statusFilter != 'all') {
-      count++;
-    }
     if (_onlyWithGate) {
       count++;
     }
@@ -164,14 +208,18 @@ class _AuditTabState extends State<AuditTab> {
 
   void _resetFilters() {
     setState(() {
-      _statusFilter = 'all';
       _onlyWithGate = false;
       _sortOption = 'arrival_asc';
+      _visibleFlightCount = _pageSize;
     });
   }
 
+  Future<void> _refreshFlights() async {
+    setState(() => _visibleFlightCount = _pageSize);
+    await _aviationController.fetchFlights();
+  }
+
   Future<void> _showFilterSheet(BuildContext context) async {
-    String tempStatus = _statusFilter;
     bool tempOnlyWithGate = _onlyWithGate;
     String tempSort = _sortOption;
 
@@ -256,7 +304,6 @@ class _AuditTabState extends State<AuditTab> {
                       TextButton(
                         onPressed: () {
                           setModalState(() {
-                            tempStatus = 'all';
                             tempOnlyWithGate = false;
                             tempSort = 'arrival_asc';
                           });
@@ -273,64 +320,55 @@ class _AuditTabState extends State<AuditTab> {
                     ],
                   ),
                   SizedBox(height: 12.h),
-                  Text(
-                    'Status',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF475569),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(14.w),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
-                  ),
-                  SizedBox(height: 12.h),
-                  Wrap(
-                    children: [
-                      buildChoiceChip(
-                        label: 'All',
-                        selected: tempStatus == 'all',
-                        onTap: () => setModalState(() => tempStatus = 'all'),
-                      ),
-                      buildChoiceChip(
-                        label: 'Scheduled',
-                        selected: tempStatus == 'scheduled',
-                        onTap: () =>
-                            setModalState(() => tempStatus = 'scheduled'),
-                      ),
-                      buildChoiceChip(
-                        label: 'Approaching',
-                        selected: tempStatus == 'approaching',
-                        onTap: () =>
-                            setModalState(() => tempStatus = 'approaching'),
-                      ),
-                      buildChoiceChip(
-                        label: 'On Ground',
-                        selected: tempStatus == 'on-ground',
-                        onTap: () =>
-                            setModalState(() => tempStatus = 'on-ground'),
-                      ),
-                      buildChoiceChip(
-                        label: 'Landed',
-                        selected: tempStatus == 'landed',
-                        onTap: () => setModalState(() => tempStatus = 'landed'),
-                      ),
-                      buildChoiceChip(
-                        label: 'Departed',
-                        selected: tempStatus == 'departed',
-                        onTap: () =>
-                            setModalState(() => tempStatus = 'departed'),
-                      ),
-                      buildChoiceChip(
-                        label: 'Delayed',
-                        selected: tempStatus == 'delayed',
-                        onTap: () =>
-                            setModalState(() => tempStatus = 'delayed'),
-                      ),
-                      buildChoiceChip(
-                        label: 'Cancelled',
-                        selected: tempStatus == 'cancelled',
-                        onTap: () =>
-                            setModalState(() => tempStatus = 'cancelled'),
-                      ),
-                    ],
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDBEAFE),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.flight_land_rounded,
+                            color: Color(0xFF2563EB),
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Showing landed flights only',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF0F172A),
+                                ),
+                              ),
+                              SizedBox(height: 2.h),
+                              Text(
+                                'This board uses the live backend feed and keeps only inbound flights that have already landed.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color: const Color(0xFF475569),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   SizedBox(height: 12.h),
                   Container(
@@ -369,7 +407,7 @@ class _AuditTabState extends State<AuditTab> {
                               ),
                               SizedBox(height: 2.h),
                               Text(
-                                'Hide flights that do not have a gate for the selected tab yet.',
+                                'Hide landed flights that do not have a gate assigned yet.',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11.sp,
                                   fontWeight: FontWeight.w500,
@@ -432,9 +470,9 @@ class _AuditTabState extends State<AuditTab> {
                     child: ElevatedButton(
                       onPressed: () {
                         setState(() {
-                          _statusFilter = tempStatus;
                           _onlyWithGate = tempOnlyWithGate;
                           _sortOption = tempSort;
+                          _visibleFlightCount = _pageSize;
                         });
                         Navigator.of(context).pop();
                       },
@@ -484,27 +522,16 @@ class _AuditTabState extends State<AuditTab> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
+        top: false,
         child: RefreshIndicator(
-          onRefresh: _aviationController.fetchFlights,
+          onRefresh: _refreshFlights,
           child: SingleChildScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(height: 24.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Text(
-                    "Flight Audits",
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 24.sp,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.dark,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 14.h),
                 _buildRefreshHeader(_aviationController),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -639,7 +666,7 @@ class _AuditTabState extends State<AuditTab> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    "${state.departures.length} dep / ${state.arrivals.length} arr",
+                    "${_landedInboundFlights(state.allFlights).length} landed",
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w700,
@@ -653,7 +680,6 @@ class _AuditTabState extends State<AuditTab> {
           ],
         ),
         SizedBox(height: 14.h),
-        _buildMovementTabs(state),
         Obx(() {
           if (state.status.value == 'error' && state.allFlights.isEmpty) {
             return _buildErrorPlaceholder(state.error.value ?? "Unknown error");
@@ -673,106 +699,6 @@ class _AuditTabState extends State<AuditTab> {
         ),
       ],
     );
-  }
-
-  Widget _buildMovementTabs(AirportState state) {
-    return Obx(() {
-      Widget buildTab({
-        required String value,
-        required String label,
-        required IconData icon,
-        required int count,
-      }) {
-        final selected = _selectedMovement == value;
-        return Expanded(
-          child: InkWell(
-            onTap: () => setState(() => _selectedMovement = value),
-            borderRadius: BorderRadius.circular(16.r),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                color: selected ? const Color(0xFF0F172A) : Colors.transparent,
-                borderRadius: BorderRadius.circular(16.r),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    icon,
-                    size: 18,
-                    color: selected ? Colors.white : const Color(0xFF64748B),
-                  ),
-                  SizedBox(width: 8.w),
-                  Flexible(
-                    child: Text(
-                      label,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w800,
-                        color: selected
-                            ? Colors.white
-                            : const Color(0xFF334155),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? Colors.white.withValues(alpha: 0.16)
-                          : const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.w800,
-                        color: selected
-                            ? Colors.white
-                            : const Color(0xFF475569),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-
-      return Container(
-        padding: EdgeInsets.all(4.w),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20.r),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Row(
-          children: [
-            buildTab(
-              value: 'departure',
-              label: 'Departures',
-              icon: Icons.flight_takeoff_rounded,
-              count: state.departures.length,
-            ),
-            SizedBox(width: 4.w),
-            buildTab(
-              value: 'arrival',
-              label: 'Arrivals',
-              icon: Icons.flight_land_rounded,
-              count: state.arrivals.length,
-            ),
-          ],
-        ),
-      );
-    });
   }
 
   Widget _buildErrorPlaceholder(String error) {
@@ -806,11 +732,9 @@ class _AuditTabState extends State<AuditTab> {
 
   Widget _buildSearchAndFilterBar(BuildContext context, AirportState state) {
     return Obx(() {
-      final activeFlights = _selectedMovement == 'departure'
-          ? state.departures
-          : state.arrivals;
-      final totalFlights = activeFlights.length;
-      final visibleFlights = _applyFilters(state.allFlights);
+      final landedFlights = _landedInboundFlights(state.allFlights);
+      final filteredFlights = _applyFilters(landedFlights);
+      final renderedFlights = _visibleFlightsSlice(filteredFlights);
       final activeCount = _activeFilterCount();
 
       return Column(
@@ -930,7 +854,8 @@ class _AuditTabState extends State<AuditTab> {
             children: [
               _buildInfoPill(
                 icon: Icons.visibility_outlined,
-                label: '${visibleFlights.length} of $totalFlights visible',
+                label:
+                    '${renderedFlights.length} of ${filteredFlights.length} loaded',
                 color: const Color(0xFF2563EB),
                 backgroundColor: const Color(0xFFEFF6FF),
               ),
@@ -940,13 +865,6 @@ class _AuditTabState extends State<AuditTab> {
                   label: 'Searching "$_searchQuery"',
                   color: const Color(0xFF7C3AED),
                   backgroundColor: const Color(0xFFF5F3FF),
-                ),
-              if (_statusFilter != 'all')
-                _buildInfoPill(
-                  icon: Icons.info_outline,
-                  label: _statusFilter.capitalizeFirst ?? _statusFilter,
-                  color: const Color(0xFFB45309),
-                  backgroundColor: const Color(0xFFFFFBEB),
                 ),
               if (_onlyWithGate)
                 _buildInfoPill(
@@ -1020,10 +938,10 @@ class _AuditTabState extends State<AuditTab> {
     BuildContext context,
   ) {
     return Obx(() {
-      final activeFlights = _selectedMovement == 'departure'
-          ? state.departures
-          : state.arrivals;
-      final filteredFlights = _applyFilters(state.allFlights);
+      final landedFlights = _landedInboundFlights(state.allFlights);
+      final filteredFlights = _applyFilters(landedFlights);
+      final visibleFlights = _visibleFlightsSlice(filteredFlights);
+      final hasMoreFlights = visibleFlights.length < filteredFlights.length;
 
       if (state.status.value == 'loading' && state.allFlights.isEmpty) {
         return Column(
@@ -1049,7 +967,7 @@ class _AuditTabState extends State<AuditTab> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "API returned no data for this airport.",
+                  "The backend did not return any live flights for this airport.",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12.sp,
                     color: Colors.grey[400],
@@ -1062,10 +980,7 @@ class _AuditTabState extends State<AuditTab> {
         );
       }
 
-      if (activeFlights.isEmpty) {
-        final label = _selectedMovement == 'departure'
-            ? 'departures'
-            : 'arrivals';
+      if (landedFlights.isEmpty) {
         return Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 40),
@@ -1074,7 +989,7 @@ class _AuditTabState extends State<AuditTab> {
                 Icon(Icons.flight_outlined, size: 48, color: Colors.grey[300]),
                 const SizedBox(height: 12),
                 Text(
-                  "No $label found",
+                  "No landed flights found",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 15.sp,
                     color: Colors.grey[600],
@@ -1083,7 +998,7 @@ class _AuditTabState extends State<AuditTab> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "Try refreshing or checking another time window.",
+                  "Live data is connected, but no inbound flights have landed in the current window yet.",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12.sp,
                     color: Colors.grey[400],
@@ -1158,9 +1073,35 @@ class _AuditTabState extends State<AuditTab> {
       return ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: filteredFlights.length,
+        itemCount: visibleFlights.length + (hasMoreFlights ? 1 : 0),
         itemBuilder: (context, index) {
-          final flight = filteredFlights[index];
+          if (index >= visibleFlights.length) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 12),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Scroll to load more landed flights',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF2563EB),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          final flight = visibleFlights[index];
           return FlightCard(
             flight: flight,
             onStartAudit: () => _showAuditTypeDialog(
@@ -1185,11 +1126,20 @@ class _AuditTabState extends State<AuditTab> {
     bool showHiddenObject,
     AviationFlight flight,
   ) {
-    final hasLavDraft = LAVSafetyScreen.hasSavedDraft();
-    final hasCabinQualityDraft = CabinAuditScreen.hasSavedDraft();
-    final hasCabinSecurityDraft = CabinQualityAuditScreenN.hasSavedDraft();
-    final hasHiddenObjectDraft =
-        HiddenObjectAuditWorkflowScreen.hasSavedDraft();
+    final lavDraft = AuditDraftStore.getDraft(LAVSafetyScreen.draftStorageKey);
+    final cabinQualityDraft = AuditDraftStore.getDraft(
+      CabinAuditScreen.draftStorageKey,
+    );
+    final cabinSecurityDraft = AuditDraftStore.getDraft(
+      CabinQualityAuditScreenN.draftStorageKey,
+    );
+    final hiddenObjectDraft = AuditDraftStore.getDraft(
+      HiddenObjectAuditWorkflowScreen.draftStorageKey,
+    );
+    final hasLavDraft = lavDraft != null;
+    final hasCabinQualityDraft = cabinQualityDraft != null;
+    final hasCabinSecurityDraft = cabinSecurityDraft != null;
+    final hasHiddenObjectDraft = hiddenObjectDraft != null;
 
     showModalBottomSheet(
       context: context,
@@ -1243,6 +1193,7 @@ class _AuditTabState extends State<AuditTab> {
                 onTap: () {
                   _openAuditWithDraftPrompt(
                     title: 'LAV Safety Observation',
+                    draftRecord: lavDraft,
                     hasDraft: hasLavDraft,
                     openDraft: () =>
                         Get.to(() => const LAVSafetyScreen(restoreDraft: true)),
@@ -1270,6 +1221,7 @@ class _AuditTabState extends State<AuditTab> {
                 onTap: () {
                   _openAuditWithDraftPrompt(
                     title: 'Cabin Quality Audit',
+                    draftRecord: cabinQualityDraft,
                     hasDraft: hasCabinQualityDraft,
                     openDraft: () => Get.to(
                       () => const CabinAuditScreen(restoreDraft: true),
@@ -1299,6 +1251,7 @@ class _AuditTabState extends State<AuditTab> {
                 onTap: () {
                   _openAuditWithDraftPrompt(
                     title: 'Cabin Security Search Training',
+                    draftRecord: cabinSecurityDraft,
                     hasDraft: hasCabinSecurityDraft,
                     openDraft: () => Get.to(
                       () => const CabinQualityAuditScreenN(restoreDraft: true),
@@ -1327,6 +1280,7 @@ class _AuditTabState extends State<AuditTab> {
                 onTap: () {
                   _openAuditWithDraftPrompt(
                     title: 'Hidden Object Audit',
+                    draftRecord: hiddenObjectDraft,
                     hasDraft: hasHiddenObjectDraft,
                     openDraft: () => Get.to(
                       () => const HiddenObjectAuditWorkflowScreen(
@@ -1364,8 +1318,159 @@ class _AuditTabState extends State<AuditTab> {
     );
   }
 
+  String _buildDraftFoundMessage(AuditDraftRecord? draftRecord) {
+    final shipNumber = (draftRecord?.shipNumber ?? '').trim();
+    final flightNumber = (draftRecord?.flightNumber ?? '').trim();
+    final gate = (draftRecord?.gate ?? '').trim();
+    final subtitle = (draftRecord?.subtitle ?? '').trim();
+    final summaryParts = <String>[
+      if (shipNumber.isNotEmpty) 'aircraft $shipNumber',
+      if (flightNumber.isNotEmpty) 'flight $flightNumber',
+      if (gate.isNotEmpty) 'gate $gate',
+      if (subtitle.isNotEmpty) subtitle,
+    ];
+
+    if (summaryParts.isNotEmpty) {
+      return ': ${summaryParts.join(' • ')}.';
+    }
+
+    return '.';
+  }
+
+  // ignore: unused_element
+  Widget _buildDraftDetailsCard(AuditDraftRecord draftRecord) {
+    final details = <Widget>[
+      if ((draftRecord.subtitle ?? '').trim().isNotEmpty)
+        Text(
+          draftRecord.subtitle!.trim(),
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF475569),
+            height: 1.45,
+          ),
+        ),
+      if ((draftRecord.subtitle ?? '').trim().isNotEmpty)
+        SizedBox(height: 12.h),
+      Wrap(
+        spacing: 8.w,
+        runSpacing: 8.h,
+        children: [
+          if ((draftRecord.shipNumber ?? '').trim().isNotEmpty)
+            _buildDraftMetaChip(
+              icon: Icons.airplanemode_active_rounded,
+              label: 'Aircraft ${draftRecord.shipNumber!.trim()}',
+            ),
+          if ((draftRecord.flightNumber ?? '').trim().isNotEmpty)
+            _buildDraftMetaChip(
+              icon: Icons.confirmation_number_outlined,
+              label: 'Flight ${draftRecord.flightNumber!.trim()}',
+            ),
+          if ((draftRecord.gate ?? '').trim().isNotEmpty)
+            _buildDraftMetaChip(
+              icon: Icons.place_outlined,
+              label: 'Gate ${draftRecord.gate!.trim()}',
+            ),
+        ],
+      ),
+      SizedBox(height: 12.h),
+      Row(
+        children: [
+          const Icon(
+            Icons.schedule_rounded,
+            size: 16,
+            color: Color(0xFF64748B),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              'Saved ${DateFormat('MMM d, y • h:mm a').format(draftRecord.savedAt)}',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(14.w),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38.w,
+                height: 38.w,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDBEAFE),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: const Icon(
+                  Icons.drafts_outlined,
+                  size: 20,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  'Saved draft details',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          ...details,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDraftMetaChip({required IconData icon, required String label}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF2563EB)),
+          SizedBox(width: 6.w),
+          Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF334155),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openAuditWithDraftPrompt({
     required String title,
+    required AuditDraftRecord? draftRecord,
     required bool hasDraft,
     required VoidCallback openDraft,
     required VoidCallback openNew,
@@ -1397,12 +1502,28 @@ class _AuditTabState extends State<AuditTab> {
               ),
             ),
             SizedBox(height: 8.h),
-            Text(
-              'You already have a saved draft for $title.',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13.sp,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF64748B),
+            RichText(
+              text: TextSpan(
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF64748B),
+                  height: 1.45,
+                ),
+                children: [
+                  const TextSpan(
+                    text: 'A saved draft is ready to continue for ',
+                  ),
+                  TextSpan(
+                    text: title,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF0F172A),
+                    ),
+                  ),
+                  TextSpan(text: _buildDraftFoundMessage(draftRecord)),
+                ],
               ),
             ),
             SizedBox(height: 18.h),

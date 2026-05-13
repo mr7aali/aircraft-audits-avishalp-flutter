@@ -57,8 +57,51 @@ class AppApiService {
     return value.endsWith('/') ? value : '$value/';
   }
 
-  Uri buildUri(String endpoint, {Map<String, dynamic>? queryParameters}) {
-    final baseUri = Uri.parse(baseUrl);
+  static List<String> _resolveBaseUrlCandidates() {
+    final primary = baseUrl;
+    final candidates = <String>[primary];
+    final baseUri = Uri.tryParse(primary);
+    if (baseUri == null ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return candidates;
+    }
+
+    final normalizedHost = baseUri.host.trim().toLowerCase();
+    if (!_isAndroidLocalDevelopmentHost(normalizedHost)) {
+      return candidates;
+    }
+
+    for (final alternateHost in <String>[
+      '127.0.0.1',
+      'localhost',
+      '10.0.2.2',
+    ]) {
+      if (alternateHost == normalizedHost) {
+        continue;
+      }
+
+      candidates.add(
+        _normalizeBaseUrl(baseUri.replace(host: alternateHost).toString()),
+      );
+    }
+
+    return candidates;
+  }
+
+  static bool _isAndroidLocalDevelopmentHost(String host) {
+    return host == 'localhost' ||
+        host == '127.0.0.1' ||
+        host == '10.0.2.2' ||
+        host == '0.0.0.0';
+  }
+
+  Uri buildUri(
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+    String? baseUrlOverride,
+  }) {
+    final baseUri = Uri.parse(baseUrlOverride ?? baseUrl);
     final uri = baseUri.resolve(endpoint);
     final normalizedQuery = <String, String>{};
 
@@ -186,6 +229,41 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> getReportsSummary({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'reports/summary',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getReportsOverview({
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'reports/overview',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getReportMetricDetail({
+    required String bundleKey,
+    required String metricKey,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final data = await _send(
+      'GET',
+      'reports/bundles/$bundleKey/metrics/$metricKey',
+      queryParameters: queryParameters,
+    );
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> updateMyProfile(
     Map<String, dynamic> payload,
   ) async {
@@ -266,7 +344,8 @@ class AppApiService {
       'stations/select',
       body: {
         'stationId': stationId,
-        if (contract != null && contract.trim().isNotEmpty) 'contract': contract,
+        if (contract != null && contract.trim().isNotEmpty)
+          'contract': contract,
       },
     );
     return _asMap(data);
@@ -673,7 +752,6 @@ class AppApiService {
     bool authenticated = true,
     bool retryOnUnauthorized = true,
   }) async {
-    final uri = buildUri(endpoint, queryParameters: queryParameters);
     final headers = <String, String>{'Accept': 'application/json'};
 
     if (authenticated) {
@@ -683,62 +761,76 @@ class AppApiService {
       }
     }
 
-    _logRequest(
-      method: method,
-      uri: uri,
-      queryParameters: queryParameters,
-      body: body,
-      authenticated: authenticated,
-    );
+    http.Response? response;
+    Uri? activeUri;
+    final attemptedUris = <Uri>[];
+    final candidateBaseUrls = _resolveBaseUrlCandidates();
 
-    http.Response response;
-    try {
-      switch (method.toUpperCase()) {
-        case 'GET':
-          response = await _client.get(uri, headers: headers);
-          break;
-        case 'POST':
-          headers['Content-Type'] = 'application/json';
-          response = await _client.post(
-            uri,
-            headers: headers,
-            body: jsonEncode(body ?? const {}),
-          );
-          break;
-        case 'PATCH':
-          headers['Content-Type'] = 'application/json';
-          response = await _client.patch(
-            uri,
-            headers: headers,
-            body: jsonEncode(body ?? const {}),
-          );
-          break;
-        default:
-          throw ApiException('Unsupported request method: $method');
-      }
-      _logResponse(method: method, uri: uri, response: response);
-    } on SocketException {
-      _logTransportError(
+    for (final candidateBaseUrl in candidateBaseUrls) {
+      final candidateUri = buildUri(
+        endpoint,
+        queryParameters: queryParameters,
+        baseUrlOverride: candidateBaseUrl,
+      );
+      attemptedUris.add(candidateUri);
+
+      _logRequest(
         method: method,
-        uri: uri,
-        error: 'SocketException: Unable to reach backend',
+        uri: candidateUri,
+        queryParameters: queryParameters,
+        body: body,
+        authenticated: authenticated,
       );
-      final baseUri = Uri.tryParse(baseUrl);
-      final reachableHost = baseUri == null
-          ? baseUrl
-          : '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}';
-      final androidHint =
-          !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-          ? ' For Android APKs, confirm the installed release was built with the correct API_BASE_URL and that the phone can open $reachableHost.'
-          : '';
-      throw ApiException(
-        'Unable to reach the backend at $reachableHost. Check the API base URL and server status.$androidHint',
-      );
-    } on HttpException catch (error) {
-      _logTransportError(method: method, uri: uri, error: error.toString());
-      throw const ApiException(
-        'Unable to complete the request because the server connection failed.',
-      );
+
+      try {
+        switch (method.toUpperCase()) {
+          case 'GET':
+            response = await _client.get(candidateUri, headers: headers);
+            break;
+          case 'POST':
+            headers['Content-Type'] = 'application/json';
+            response = await _client.post(
+              candidateUri,
+              headers: headers,
+              body: jsonEncode(body ?? const {}),
+            );
+            break;
+          case 'PATCH':
+            headers['Content-Type'] = 'application/json';
+            response = await _client.patch(
+              candidateUri,
+              headers: headers,
+              body: jsonEncode(body ?? const {}),
+            );
+            break;
+          default:
+            throw ApiException('Unsupported request method: $method');
+        }
+
+        activeUri = candidateUri;
+        _logResponse(method: method, uri: candidateUri, response: response);
+        break;
+      } on SocketException {
+        _logTransportError(
+          method: method,
+          uri: candidateUri,
+          error: 'SocketException: Unable to reach backend',
+        );
+        continue;
+      } on HttpException catch (error) {
+        _logTransportError(
+          method: method,
+          uri: candidateUri,
+          error: error.toString(),
+        );
+        throw const ApiException(
+          'Unable to complete the request because the server connection failed.',
+        );
+      }
+    }
+
+    if (response == null || activeUri == null) {
+      throw ApiException(_buildBackendUnreachableMessage(attemptedUris));
     }
 
     if (response.statusCode == 401 &&
@@ -746,7 +838,7 @@ class AppApiService {
         retryOnUnauthorized &&
         await _refreshAccessToken()) {
       _logInfo(
-        '[API][RETRY] ${method.toUpperCase()} $uri -> retrying after token refresh',
+        '[API][RETRY] ${method.toUpperCase()} $activeUri -> retrying after token refresh',
       );
       return _send(
         method,
@@ -764,7 +856,7 @@ class AppApiService {
     } on ApiException catch (error) {
       _logApiError(
         method: method,
-        uri: uri,
+        uri: activeUri,
         error: error,
         responseBody: parsed,
       );
@@ -830,6 +922,49 @@ class AppApiService {
 
   void _logInfo(String message) {
     debugPrint(message);
+  }
+
+  String _buildBackendUnreachableMessage(List<Uri> attemptedUris) {
+    final attemptedHosts = attemptedUris
+        .map(
+          (uri) =>
+              '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}',
+        )
+        .toSet()
+        .join(', ');
+    final configuredBaseUri = Uri.tryParse(baseUrl);
+    final configuredHost = configuredBaseUri?.host.trim().toLowerCase() ?? '';
+    final assetLabel = AppEnv.loadedAsset.isEmpty ? '.env' : AppEnv.loadedAsset;
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      if (_isAndroidLocalDevelopmentHost(configuredHost)) {
+        final portSegment = configuredBaseUri?.hasPort == true
+            ? ':${configuredBaseUri!.port}'
+            : '';
+        final scheme = configuredBaseUri?.scheme.isNotEmpty == true
+            ? configuredBaseUri!.scheme
+            : 'http';
+        return 'Unable to reach the backend. Tried $attemptedHosts. '
+            'This is usually not a permission issue. On a real Android phone, '
+            '`10.0.2.2` only works in the emulator. Use your computer\'s LAN IP '
+            'like `$scheme://192.168.x.x$portSegment/api`, or run '
+            '`adb reverse tcp${portSegment.isEmpty ? ':3000' : portSegment} '
+            'tcp${portSegment.isEmpty ? ':3000' : portSegment}` and point '
+            'API_BASE_URL to `$scheme://127.0.0.1$portSegment/api`. '
+            'Current config came from $assetLabel.';
+      }
+
+      return 'Unable to reach the backend at $attemptedHosts. '
+          'The Android app already has network permission, so this is more likely '
+          'a device-to-server reachability issue or a stale API_BASE_URL build value. '
+          'Confirm the phone can open the backend host directly and rebuild with the '
+          'correct `--dart-define-from-file` or `--dart-define=API_BASE_URL=...`. '
+          'Current config came from $assetLabel.';
+    }
+
+    return 'Unable to reach the backend at $attemptedHosts. '
+        'Check the API base URL and server status. Current config came from '
+        '$assetLabel.';
   }
 
   String _stringifyForLog(dynamic value, {bool isErrorPayload = false}) {

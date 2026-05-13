@@ -95,30 +95,19 @@ class _HeroSection extends StatelessWidget {
         ],
       ),
       child: SafeArea(
-        top: true,
+        top: false,
         bottom: false,
         child: Column(
           children: [
-            Stack(
+            Align(
               alignment: Alignment.center,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.menu, color: Colors.white),
-                    onPressed: () {
-                      Scaffold.of(context).openDrawer();
-                    },
-                  ),
-                ),
-                Image.asset(
-                  'assets/images/custom_logo.png',
-                  height: 52.h,
-                  color: Colors.white,
-                ),
-              ],
+              child: Image.asset(
+                'assets/images/custom_logo.png',
+                height: 48.h,
+                color: Colors.white,
+              ),
             ),
-            const SizedBox(height: 36),
+            SizedBox(height: 28.h),
             Column(
               children: [
                 Container(
@@ -141,7 +130,7 @@ class _HeroSection extends StatelessWidget {
                   style: GoogleFonts.dmSans(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w500,
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withValues(alpha: 0.8),
                   ),
                 ),
                 Text(
@@ -160,7 +149,7 @@ class _HeroSection extends StatelessWidget {
                     vertical: 8.h,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white24),
                   ),
@@ -240,7 +229,7 @@ class _DateSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -297,7 +286,7 @@ class _OperationalContextCard extends StatelessWidget {
           border: Border.all(color: const Color(0xFFE2E8F0)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 14,
               offset: const Offset(0, 6),
             ),
@@ -433,7 +422,9 @@ class _FlightsOverviewSection extends StatelessWidget {
     return Obx(() {
       final status = controller.activeAirport.status.value;
       final error = controller.activeAirport.error.value;
-      final arrivals = controller.activeAirport.arrivals.toList(growable: false);
+      final arrivals = controller.activeAirport.arrivals.toList(
+        growable: false,
+      );
       final visibleFlights = arrivals.take(6).toList(growable: false);
 
       return Padding(
@@ -538,9 +529,7 @@ class _RefreshBadge extends StatelessWidget {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: isLive
-              ? const Color(0xFFDCFCE7)
-              : const Color(0xFFE2E8F0),
+          color: isLive ? const Color(0xFFDCFCE7) : const Color(0xFFE2E8F0),
           borderRadius: BorderRadius.circular(999.r),
         ),
         child: Text(
@@ -613,7 +602,7 @@ class _HomeFlightCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -701,8 +690,9 @@ class _FlightHeadlineValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: alignEnd
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         Text(
           label,
