@@ -106,10 +106,41 @@ class AviationFlight {
       }
     }
 
+    Map<String, dynamic> safeMap(dynamic value) {
+      if (value is Map<String, dynamic>) return value;
+      if (value is Map) return Map<String, dynamic>.from(value);
+      return <String, dynamic>{};
+    }
+
     String readString(String key, {String fallback = "N/A"}) {
       final value = json[key]?.toString().trim() ?? "";
       return value.isEmpty ? fallback : value;
     }
+
+    String readNestedString(
+      Map<String, dynamic> source,
+      String key, {
+      required String fallback,
+    }) {
+      final value = source[key]?.toString().trim() ?? "";
+      return value.isEmpty ? fallback : value;
+    }
+
+    String readLocationValue({
+      required Map<String, dynamic> source,
+      required String nestedKey,
+      required String flatKey,
+    }) {
+      final nestedValue = readNestedString(source, nestedKey, fallback: "");
+      if (nestedValue.isNotEmpty) {
+        return nestedValue;
+      }
+
+      return readString(flatKey, fallback: "—");
+    }
+
+    final departure = safeMap(json['departure']);
+    final arrival = safeMap(json['arrival']);
 
     return AviationFlight(
       id: readString('id', fallback: readString('flightNumber')),
@@ -119,13 +150,29 @@ class AviationFlight {
       departureAirport: readString('departureAirport'),
       departureIata: readString('departureIata'),
       departureTime: parseDateTime(json['departureTime']),
-      departureTerminal: readString('departureTerminal'),
-      departureGate: readString('departureGate'),
+      departureTerminal: readLocationValue(
+        source: departure,
+        nestedKey: 'terminal',
+        flatKey: 'departureTerminal',
+      ),
+      departureGate: readLocationValue(
+        source: departure,
+        nestedKey: 'gate',
+        flatKey: 'departureGate',
+      ),
       arrivalAirport: readString('arrivalAirport'),
       arrivalIata: readString('arrivalIata'),
       arrivalTime: parseDateTime(json['arrivalTime']),
-      arrivalTerminal: readString('arrivalTerminal'),
-      arrivalGate: readString('arrivalGate'),
+      arrivalTerminal: readLocationValue(
+        source: arrival,
+        nestedKey: 'terminal',
+        flatKey: 'arrivalTerminal',
+      ),
+      arrivalGate: readLocationValue(
+        source: arrival,
+        nestedKey: 'gate',
+        flatKey: 'arrivalGate',
+      ),
       status: readString('status', fallback: "unknown"),
       shipNumber: readString('shipNumber'),
     );
@@ -135,10 +182,33 @@ class AviationFlight {
 
   bool get isArrival => !isDeparture;
 
-  String get operationalTerminal =>
-      isDeparture ? departureTerminal : arrivalTerminal;
+  String _displayValue(String value, {String fallback = "—"}) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) {
+      return fallback;
+    }
 
-  String get operationalGate => isDeparture ? departureGate : arrivalGate;
+    final lower = normalized.toLowerCase();
+    if (lower == "n/a" || lower == "unknown" || normalized == "—") {
+      return fallback;
+    }
+
+    return normalized;
+  }
+
+  String get displayDepartureTerminal => _displayValue(departureTerminal);
+
+  String get displayDepartureGate => _displayValue(departureGate);
+
+  String get displayArrivalTerminal => _displayValue(arrivalTerminal);
+
+  String get displayArrivalGate => _displayValue(arrivalGate);
+
+  String get operationalTerminal =>
+      isDeparture ? displayDepartureTerminal : displayArrivalTerminal;
+
+  String get operationalGate =>
+      isDeparture ? displayDepartureGate : displayArrivalGate;
 
   DateTime? get operationalTime => isDeparture ? departureTime : arrivalTime;
 

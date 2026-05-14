@@ -656,11 +656,11 @@ class _HomeFlightCard extends StatelessWidget {
             children: [
               _FlightMetaPill(
                 icon: Icons.meeting_room_outlined,
-                label: 'Terminal ${flight.arrivalTerminal}',
+                label: 'Terminal ${flight.displayArrivalTerminal}',
               ),
               _FlightMetaPill(
                 icon: Icons.place_outlined,
-                label: 'Gate ${flight.arrivalGate}',
+                label: 'Gate ${flight.displayArrivalGate}',
               ),
               _FlightMetaPill(
                 icon: Icons.confirmation_number_outlined,
