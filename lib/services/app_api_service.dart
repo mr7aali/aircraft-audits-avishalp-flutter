@@ -264,6 +264,24 @@ class AppApiService {
     return _asMap(data);
   }
 
+  Future<ApiDownloadedFile> downloadReportBundlePdf({
+    required String bundleKey,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final response = await _sendBytes(
+      'GET',
+      'reports/bundles/$bundleKey/export',
+      queryParameters: queryParameters,
+    );
+
+    return ApiDownloadedFile(
+      bytes: response.bodyBytes,
+      fileName:
+          _extractFileName(response.headers['content-disposition']) ??
+          '$bundleKey-report.pdf',
+    );
+  }
+
   Future<Map<String, dynamic>> updateMyProfile(
     Map<String, dynamic> payload,
   ) async {
@@ -864,6 +882,125 @@ class AppApiService {
     }
   }
 
+  Future<http.Response> _sendBytes(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+    bool authenticated = true,
+    bool retryOnUnauthorized = true,
+  }) async {
+    final headers = <String, String>{
+      'Accept': 'application/pdf, application/octet-stream',
+    };
+
+    if (authenticated) {
+      final accessToken = _sessionService.accessToken;
+      if (accessToken?.isNotEmpty ?? false) {
+        headers['Authorization'] = 'Bearer $accessToken';
+      }
+    }
+
+    http.Response? response;
+    Uri? activeUri;
+    final attemptedUris = <Uri>[];
+    final candidateBaseUrls = _resolveBaseUrlCandidates();
+
+    for (final candidateBaseUrl in candidateBaseUrls) {
+      final candidateUri = buildUri(
+        endpoint,
+        queryParameters: queryParameters,
+        baseUrlOverride: candidateBaseUrl,
+      );
+      attemptedUris.add(candidateUri);
+
+      _logRequest(
+        method: method,
+        uri: candidateUri,
+        queryParameters: queryParameters,
+        authenticated: authenticated,
+      );
+
+      try {
+        switch (method.toUpperCase()) {
+          case 'GET':
+            response = await _client.get(candidateUri, headers: headers);
+            break;
+          default:
+            throw ApiException('Unsupported request method: $method');
+        }
+
+        activeUri = candidateUri;
+        _logBinaryResponse(
+          method: method,
+          uri: candidateUri,
+          response: response,
+        );
+        break;
+      } on SocketException {
+        _logTransportError(
+          method: method,
+          uri: candidateUri,
+          error: 'SocketException: Unable to reach backend',
+        );
+        continue;
+      } on HttpException catch (error) {
+        _logTransportError(
+          method: method,
+          uri: candidateUri,
+          error: error.toString(),
+        );
+        throw const ApiException(
+          'Unable to complete the request because the server connection failed.',
+        );
+      }
+    }
+
+    if (response == null || activeUri == null) {
+      throw ApiException(_buildBackendUnreachableMessage(attemptedUris));
+    }
+
+    if (response.statusCode == 401 &&
+        authenticated &&
+        retryOnUnauthorized &&
+        await _refreshAccessToken()) {
+      _logInfo(
+        '[API][RETRY] ${method.toUpperCase()} $activeUri -> retrying after token refresh',
+      );
+      return _sendBytes(
+        method,
+        endpoint,
+        queryParameters: queryParameters,
+        authenticated: authenticated,
+        retryOnUnauthorized: false,
+      );
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response;
+    }
+
+    final parsed = _decodeResponse(utf8.decode(response.bodyBytes));
+    final error = parsed is Map<String, dynamic>
+        ? ApiException(
+            _extractErrorMessage(parsed),
+            statusCode: response.statusCode,
+            code: parsed['code'] as String?,
+            details: parsed['details'],
+          )
+        : ApiException(
+            'Request failed with status ${response.statusCode}',
+            statusCode: response.statusCode,
+          );
+
+    _logApiError(
+      method: method,
+      uri: activeUri,
+      error: error,
+      responseBody: parsed,
+    );
+    throw error;
+  }
+
   void _logRequest({
     required String method,
     required Uri uri,
@@ -891,6 +1028,23 @@ class AppApiService {
       '[API][RESPONSE] ${method.toUpperCase()} $uri',
       'status=${response.statusCode}',
       if (responseBody.isNotEmpty) 'body=${_truncate(responseBody)}',
+    ].join(' | ');
+    _logInfo(summary);
+  }
+
+  void _logBinaryResponse({
+    required String method,
+    required Uri uri,
+    required http.Response response,
+  }) {
+    final summary = <String>[
+      '[API][RESPONSE] ${method.toUpperCase()} $uri',
+      'status=${response.statusCode}',
+      'bytes=${response.bodyBytes.length}',
+      if (response.headers['content-type']?.isNotEmpty ?? false)
+        'contentType=${response.headers['content-type']}',
+      if (response.headers['content-disposition']?.isNotEmpty ?? false)
+        'contentDisposition=${response.headers['content-disposition']}',
     ].join(' | ');
     _logInfo(summary);
   }
@@ -1087,6 +1241,42 @@ class AppApiService {
     return baseMessage;
   }
 
+  String? _extractFileName(String? contentDisposition) {
+    if (contentDisposition == null || contentDisposition.trim().isEmpty) {
+      return null;
+    }
+
+    final utf8Match = RegExp(
+      r"filename\*\s*=\s*UTF-8''([^;]+)",
+      caseSensitive: false,
+    ).firstMatch(contentDisposition);
+    if (utf8Match != null) {
+      return _sanitizeFileName(Uri.decodeFull(utf8Match.group(1)!.trim()));
+    }
+
+    final fileNameMatch = RegExp(
+      r'filename\s*=\s*"?([^";]+)"?',
+      caseSensitive: false,
+    ).firstMatch(contentDisposition);
+    if (fileNameMatch != null) {
+      return _sanitizeFileName(fileNameMatch.group(1)!.trim());
+    }
+
+    return null;
+  }
+
+  String _sanitizeFileName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return 'report-export.pdf';
+    }
+
+    final normalized = trimmed.replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-');
+    return normalized.toLowerCase().endsWith('.pdf')
+        ? normalized
+        : '$normalized.pdf';
+  }
+
   Future<bool> _refreshAccessToken() async {
     final refreshToken = _sessionService.refreshToken;
     if (refreshToken == null || refreshToken.isEmpty) {
@@ -1151,4 +1341,11 @@ class AppApiService {
     }
     return value.map(_asMap).toList();
   }
+}
+
+class ApiDownloadedFile {
+  const ApiDownloadedFile({required this.bytes, required this.fileName});
+
+  final Uint8List bytes;
+  final String fileName;
 }
