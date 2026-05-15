@@ -38,6 +38,9 @@ class SessionService {
 
   String get firstName => (user?['firstName'] as String?)?.trim() ?? '';
 
+  String get profileImageFileId =>
+      (user?['profileImageFileId'] as String?)?.trim() ?? '';
+
   String get fullName {
     final first = (user?['firstName'] as String?)?.trim() ?? '';
     final last = (user?['lastName'] as String?)?.trim() ?? '';

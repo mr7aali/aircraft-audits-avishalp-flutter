@@ -30,6 +30,11 @@ class AppApiService {
 
   static String get baseUrl => _cachedBaseUrl ??= _resolveBaseUrl();
 
+  static String get socketBaseUrl => _deriveSocketBaseUrl(baseUrl);
+
+  static String get chatSocketUrl =>
+      '${socketBaseUrl.replaceFirst(RegExp(r'/$'), '')}/chat';
+
   static String _resolveBaseUrl() {
     final configured = AppEnv.apiBaseUrl;
     if (configured.isNotEmpty) {
@@ -55,6 +60,26 @@ class AppApiService {
 
   static String _normalizeBaseUrl(String value) {
     return value.endsWith('/') ? value : '$value/';
+  }
+
+  static String _deriveSocketBaseUrl(String apiBaseUrl) {
+    final Uri apiUri = Uri.parse(_normalizeBaseUrl(apiBaseUrl));
+    final List<String> segments = apiUri.pathSegments
+        .where((segment) => segment.trim().isNotEmpty)
+        .toList(growable: true);
+
+    if (segments.isNotEmpty && segments.last.toLowerCase() == 'api') {
+      segments.removeLast();
+    }
+
+    final String normalizedPath = segments.isEmpty
+        ? '/'
+        : '/${segments.join('/')}';
+
+    return apiUri
+        .replace(path: normalizedPath, queryParameters: null, fragment: null)
+        .toString()
+        .replaceFirst(RegExp(r'/$'), '');
   }
 
   static List<String> _resolveBaseUrlCandidates() {

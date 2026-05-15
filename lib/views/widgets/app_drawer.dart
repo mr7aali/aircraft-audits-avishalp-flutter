@@ -76,10 +76,11 @@ class _AppDrawerState extends State<AppDrawer> {
             return _StationOption(
               id: (station['stationId'] as String?)?.trim() ?? '',
               label: label.isEmpty ? 'Station' : label,
-              availableContracts: ((station['availableContracts'] as List?) ?? [])
-                  .map((entry) => entry?.toString().trim() ?? '')
-                  .where((entry) => entry.isNotEmpty)
-                  .toList(growable: false),
+              availableContracts:
+                  ((station['availableContracts'] as List?) ?? [])
+                      .map((entry) => entry?.toString().trim() ?? '')
+                      .where((entry) => entry.isNotEmpty)
+                      .toList(growable: false),
               activeContract: (station['activeContract'] as String?)?.trim(),
             );
           })
@@ -133,8 +134,9 @@ class _AppDrawerState extends State<AppDrawer> {
     String? selectedStationId = session.activeStationId.isNotEmpty
         ? session.activeStationId
         : (_stations.isNotEmpty ? _stations.first.id : null);
-    String? selectedContract =
-        session.activeContract.isNotEmpty ? session.activeContract : null;
+    String? selectedContract = session.activeContract.isNotEmpty
+        ? session.activeContract
+        : null;
     bool isSubmitting = false;
 
     _StationOption? findSelectedStation() {
@@ -218,7 +220,9 @@ class _AppDrawerState extends State<AppDrawer> {
               try {
                 final activeStation = await _api.selectStation(
                   selectedStation.id,
-                  contract: normalizedContract.isEmpty ? null : normalizedContract,
+                  contract: normalizedContract.isEmpty
+                      ? null
+                      : normalizedContract,
                 );
                 session.saveActiveStation(activeStation);
 
@@ -376,13 +380,17 @@ class _AppDrawerState extends State<AppDrawer> {
                               final station = findSelectedStation();
                               if (station == null) {
                                 selectedContract = null;
-                              } else if (station.availableContracts.length == 1) {
-                                selectedContract = station.availableContracts.first;
+                              } else if (station.availableContracts.length ==
+                                  1) {
+                                selectedContract =
+                                    station.availableContracts.first;
                               } else {
                                 final currentContract =
                                     selectedContract?.trim() ?? '';
-                                selectedContract = station.availableContracts
-                                        .contains(currentContract)
+                                selectedContract =
+                                    station.availableContracts.contains(
+                                      currentContract,
+                                    )
                                     ? currentContract
                                     : station.activeContract;
                               }
@@ -403,35 +411,37 @@ class _AppDrawerState extends State<AppDrawer> {
                     Wrap(
                       spacing: 8.w,
                       runSpacing: 8.h,
-                      children: availableContracts.map((contract) {
-                        final isSelected = selectedContract == contract;
-                        return ChoiceChip(
-                          label: Text(contract),
-                          selected: isSelected,
-                          onSelected: isSubmitting
-                              ? null
-                              : (_) => setModalState(
-                                    () => selectedContract = contract,
-                                  ),
-                          labelStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF334155),
-                          ),
-                          selectedColor: const Color(0xFF0F766E),
-                          backgroundColor: const Color(0xFFF8FAFC),
-                          side: BorderSide(
-                            color: isSelected
-                                ? const Color(0xFF0F766E)
-                                : const Color(0xFFE2E8F0),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14.r),
-                          ),
-                        );
-                      }).toList(growable: false),
+                      children: availableContracts
+                          .map((contract) {
+                            final isSelected = selectedContract == contract;
+                            return ChoiceChip(
+                              label: Text(contract),
+                              selected: isSelected,
+                              onSelected: isSubmitting
+                                  ? null
+                                  : (_) => setModalState(
+                                      () => selectedContract = contract,
+                                    ),
+                              labelStyle: GoogleFonts.plusJakartaSans(
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF334155),
+                              ),
+                              selectedColor: const Color(0xFF0F766E),
+                              backgroundColor: const Color(0xFFF8FAFC),
+                              side: BorderSide(
+                                color: isSelected
+                                    ? const Color(0xFF0F766E)
+                                    : const Color(0xFFE2E8F0),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14.r),
+                              ),
+                            );
+                          })
+                          .toList(growable: false),
                     ),
                   ],
                   if (_stations.isEmpty && !_isLoadingStations) ...[
@@ -449,7 +459,9 @@ class _AppDrawerState extends State<AppDrawer> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: (_stations.isEmpty || isSubmitting) ? null : submit,
+                      onPressed: (_stations.isEmpty || isSubmitting)
+                          ? null
+                          : submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2563EB),
                         foregroundColor: Colors.white,
@@ -584,11 +596,7 @@ class _AppDrawerState extends State<AppDrawer> {
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.swap_horiz_rounded,
-              size: 18.sp,
-              color: Colors.white,
-            ),
+            Icon(Icons.swap_horiz_rounded, size: 18.sp, color: Colors.white),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
@@ -638,7 +646,9 @@ class _AppDrawerState extends State<AppDrawer> {
         showHiddenObjectAudit;
     final stationLabel = _workspaceValue(
       currentValue: session.activeStationCode,
-      fallbackOptions: _stations.map((station) => station.id).toList(growable: false),
+      fallbackOptions: _stations
+          .map((station) => station.id)
+          .toList(growable: false),
       emptyLabel: 'Choose station',
     );
     final airlineLabel = _workspaceValue(
@@ -650,6 +660,22 @@ class _AppDrawerState extends State<AppDrawer> {
       stationLabel: stationLabel,
       airlineLabel: airlineLabel,
     );
+    final String profileImageUrl = session.profileImageFileId.isEmpty
+        ? ''
+        : _api.buildFileContentUrl(session.profileImageFileId);
+    final Map<String, String> imageHeaders = _api.buildImageHeaders();
+    final String initials = session.fullName.trim().isEmpty
+        ? 'U'
+        : session.fullName
+              .trim()
+              .split(RegExp(r'\s+'))
+              .where((part) => part.isNotEmpty)
+              .take(2)
+              .map((part) => part[0].toUpperCase())
+              .join();
+    final ImageProvider<Object>? profileImage = profileImageUrl.isEmpty
+        ? null
+        : NetworkImage(profileImageUrl, headers: imageHeaders);
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -668,11 +694,26 @@ class _AppDrawerState extends State<AppDrawer> {
             currentAccountPicture: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white30, width: 2),
+                gradient: const LinearGradient(
+                  colors: <Color>[Color(0x66FFFFFF), Color(0x1FFFFFFF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: Colors.white30, width: 1.5),
               ),
-              child: const CircleAvatar(
+              child: CircleAvatar(
                 backgroundColor: Colors.white24,
-                backgroundImage: AssetImage('assets/images/mursalin.jpg'),
+                backgroundImage: profileImage,
+                child: profileImage == null
+                    ? Text(
+                        initials,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18.sp,
+                          color: Colors.white,
+                        ),
+                      )
+                    : null,
               ),
             ),
             accountName: Text(
