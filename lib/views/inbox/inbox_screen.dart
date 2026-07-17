@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:avislap/utils/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -7,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../services/api_exception.dart';
 import '../../services/app_api_service.dart';
+import '../../services/chat_socket_service.dart';
 import '../../services/session_service.dart';
 
 // =====================
@@ -38,6 +41,30 @@ class ChatListItem {
     required this.isOnline,
     required this.unreadCount,
   });
+
+  ChatListItem copyWith({
+    String? userId,
+    String? conversationId,
+    String? userName,
+    String? phone,
+    String? userImage,
+    String? lastMessage,
+    String? time,
+    bool? isOnline,
+    int? unreadCount,
+  }) {
+    return ChatListItem(
+      userId: userId ?? this.userId,
+      conversationId: conversationId ?? this.conversationId,
+      userName: userName ?? this.userName,
+      phone: phone ?? this.phone,
+      userImage: userImage ?? this.userImage,
+      lastMessage: lastMessage ?? this.lastMessage,
+      time: time ?? this.time,
+      isOnline: isOnline ?? this.isOnline,
+      unreadCount: unreadCount ?? this.unreadCount,
+    );
+  }
 }
 
 class InboxTabItem {
@@ -70,12 +97,17 @@ class ChatMessage {
 // =====================
 class InboxController extends GetxController {
   final AppApiService _api = Get.find<AppApiService>();
+  final ChatSocketService _chatSocket = Get.find<ChatSocketService>();
   final RxList<ChatListItem> chatList = <ChatListItem>[].obs;
   final RxBool isLoading = true.obs;
   final TextEditingController searchController = TextEditingController();
   final RxString searchQuery = ''.obs;
   final RxString selectedTab = 'all'.obs;
   final RxInt unreadCount = 0.obs;
+  StreamSubscription<Map<String, dynamic>>? _presenceSubscription;
+  StreamSubscription<Map<String, dynamic>>? _messageCreatedSubscription;
+  StreamSubscription<Map<String, dynamic>>? _conversationUpdatedSubscription;
+  Timer? _reloadDebounce;
 
   List<InboxTabItem> get tabs => [
     const InboxTabItem(key: 'all', label: 'All'),
@@ -87,13 +119,30 @@ class InboxController extends GetxController {
   void onInit() {
     super.onInit();
     ever<String>(selectedTab, (_) => loadConversations());
+    _chatSocket.ensureConnected();
+    _presenceSubscription = _chatSocket.presenceUpdates.listen(
+      _handlePresenceUpdated,
+    );
+    _messageCreatedSubscription = _chatSocket.messageCreated.listen((_) {
+      _scheduleConversationReload();
+    });
+    _conversationUpdatedSubscription = _chatSocket.conversationUpdated.listen((
+      _,
+    ) {
+      _scheduleConversationReload();
+    });
     loadConversations();
   }
 
   void updateSearch(String query) => searchQuery.value = query;
 
-  Future<void> loadConversations() async {
-    isLoading.value = true;
+  Future<void> loadConversations({
+    bool showLoading = true,
+    bool showErrors = true,
+  }) async {
+    if (showLoading) {
+      isLoading.value = true;
+    }
 
     try {
       final trimmedQuery = searchQuery.value.trim();
@@ -109,6 +158,10 @@ class InboxController extends GetxController {
             ? item['otherParticipant'] as Map<String, dynamic>
             : <String, dynamic>{};
         final otherUserId = otherParticipant['id']?.toString() ?? '';
+        final conversationId = item['id']?.toString().trim() ?? '';
+        if (conversationId.isNotEmpty) {
+          _chatSocket.joinConversation(conversationId);
+        }
         if (otherUserId.isEmpty) {
           continue;
         }
@@ -130,29 +183,66 @@ class InboxController extends GetxController {
         (total, item) => total + item.unreadCount,
       );
       chatList.assignAll(mapped);
+      _chatSocket.ensureConnected();
     } on ApiException catch (error) {
-      chatList.clear();
-      unreadCount.value = 0;
-      Get.snackbar(
-        'Chat Unavailable',
-        error.message,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (showLoading) {
+        chatList.clear();
+        unreadCount.value = 0;
+      }
+      if (showErrors) {
+        Get.snackbar(
+          'Chat Unavailable',
+          error.message,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
     } catch (_) {
-      chatList.clear();
-      unreadCount.value = 0;
-      Get.snackbar(
-        'Chat Unavailable',
-        'Unable to load conversations right now.',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (showLoading) {
+        chatList.clear();
+        unreadCount.value = 0;
+      }
+      if (showErrors) {
+        Get.snackbar(
+          'Chat Unavailable',
+          'Unable to load conversations right now.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
     } finally {
-      isLoading.value = false;
+      if (showLoading) {
+        isLoading.value = false;
+      }
     }
+  }
+
+  void _handlePresenceUpdated(Map<String, dynamic> payload) {
+    final String userId = payload['userId']?.toString() ?? '';
+    if (userId.isEmpty) {
+      return;
+    }
+
+    final int index = chatList.indexWhere((item) => item.userId == userId);
+    if (index < 0) {
+      return;
+    }
+
+    chatList[index] = chatList[index].copyWith(
+      isOnline: payload['isOnline'] == true,
+    );
+    chatList.refresh();
+  }
+
+  void _scheduleConversationReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!isClosed) {
+        loadConversations(showLoading: false, showErrors: false);
+      }
+    });
   }
 
   ChatListItem _mapChatUser(
@@ -254,6 +344,10 @@ class InboxController extends GetxController {
 
   @override
   void onClose() {
+    _reloadDebounce?.cancel();
+    _presenceSubscription?.cancel();
+    _messageCreatedSubscription?.cancel();
+    _conversationUpdatedSubscription?.cancel();
     searchController.dispose();
     super.onClose();
   }
@@ -593,10 +687,46 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Widget _buildConversationAvatar(ChatListItem chat) {
-    final image = chat.userImage.trim();
-    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
-    final initials = chat.userName.isNotEmpty
-        ? chat.userName
+    return _UserAvatar(
+      image: chat.userImage,
+      name: chat.userName,
+      radius: 26.r,
+      ringColor: chat.isOnline
+          ? AppColors.onlineDot.withValues(alpha: 0.22)
+          : const Color(0xFFE6ECF5),
+      background: const Color(0xFFF4F7FB),
+      textColor: AppColors.textDark,
+      fontSize: 16.sp,
+    );
+  }
+}
+
+class _UserAvatar extends StatelessWidget {
+  const _UserAvatar({
+    required this.image,
+    required this.name,
+    required this.radius,
+    required this.ringColor,
+    required this.background,
+    required this.textColor,
+    required this.fontSize,
+  });
+
+  final String image;
+  final String name;
+  final double radius;
+  final Color ringColor;
+  final Color background;
+  final Color textColor;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final String trimmedImage = image.trim();
+    final Map<String, String> imageHeaders = Get.find<AppApiService>()
+        .buildImageHeaders();
+    final String initials = name.isNotEmpty
+        ? name
               .split(' ')
               .where((part) => part.isNotEmpty)
               .take(2)
@@ -605,26 +735,46 @@ class _InboxScreenState extends State<InboxScreen> {
         : '?';
 
     ImageProvider<Object>? imageProvider;
-    if (image.startsWith('http')) {
-      imageProvider = NetworkImage(image, headers: imageHeaders);
-    } else if (image.isNotEmpty) {
-      imageProvider = AssetImage(image);
+    if (trimmedImage.startsWith('http')) {
+      imageProvider = NetworkImage(trimmedImage, headers: imageHeaders);
+    } else if (trimmedImage.isNotEmpty) {
+      imageProvider = AssetImage(trimmedImage);
     }
 
-    return CircleAvatar(
-      radius: 26.r,
-      backgroundImage: imageProvider,
-      backgroundColor: Colors.grey.shade200,
-      child: imageProvider == null
-          ? Text(
-              initials,
-              style: GoogleFonts.poppins(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-              ),
-            )
-          : null,
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      padding: EdgeInsets.all(2.5.r),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: <Color>[ringColor, Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: CircleAvatar(
+        radius: radius - 2.5.r,
+        backgroundImage: imageProvider,
+        backgroundColor: background,
+        child: imageProvider == null
+            ? Text(
+                initials,
+                style: GoogleFonts.poppins(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w700,
+                  color: textColor,
+                ),
+              )
+            : null,
+      ),
     );
   }
 }
@@ -637,21 +787,33 @@ class ChatController extends GetxController {
 
   final String conversationId;
   final AppApiService _api = Get.find<AppApiService>();
+  final ChatSocketService _chatSocket = Get.find<ChatSocketService>();
   final SessionService _session = Get.find<SessionService>();
   final RxList<ChatMessage> messages = <ChatMessage>[].obs;
   final TextEditingController messageController = TextEditingController();
   final RxBool showAttachments = false.obs;
   final RxBool isLoading = true.obs;
   final RxBool isSending = false.obs;
+  StreamSubscription<Map<String, dynamic>>? _messageCreatedSubscription;
 
   @override
   void onInit() {
     super.onInit();
+    _chatSocket.ensureConnected();
+    _chatSocket.joinConversation(conversationId);
+    _messageCreatedSubscription = _chatSocket.messageCreated.listen(
+      _handleMessageCreated,
+    );
     loadMessages();
   }
 
-  Future<void> loadMessages() async {
-    isLoading.value = true;
+  Future<void> loadMessages({
+    bool showLoading = true,
+    bool showErrors = true,
+  }) async {
+    if (showLoading) {
+      isLoading.value = true;
+    }
 
     try {
       final response = await _api.getConversationMessages(
@@ -665,24 +827,40 @@ class ChatController extends GetxController {
       messages.assignAll(items.reversed.map(_mapMessage));
       await _markMessagesAsRead(items);
     } on ApiException catch (error) {
-      Get.snackbar(
-        'Messages Unavailable',
-        error.message,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (showErrors) {
+        Get.snackbar(
+          'Messages Unavailable',
+          error.message,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
     } catch (_) {
-      Get.snackbar(
-        'Messages Unavailable',
-        'Unable to load this conversation right now.',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      if (showErrors) {
+        Get.snackbar(
+          'Messages Unavailable',
+          'Unable to load this conversation right now.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
     } finally {
-      isLoading.value = false;
+      if (showLoading) {
+        isLoading.value = false;
+      }
     }
+  }
+
+  void _handleMessageCreated(Map<String, dynamic> payload) {
+    final String eventConversationId =
+        payload['conversationId']?.toString().trim() ?? '';
+    if (eventConversationId != conversationId) {
+      return;
+    }
+
+    loadMessages(showLoading: false, showErrors: false);
   }
 
   ChatMessage _mapMessage(Map<String, dynamic> item) {
@@ -709,11 +887,20 @@ class ChatController extends GetxController {
       senderName: (sender['name'] as String?)?.trim().isNotEmpty == true
           ? (sender['name'] as String).trim()
           : 'Unknown',
-      senderImage: null,
+      senderImage: _buildProfileImageUrl(
+        (sender['profileImageFileId'] as String?)?.trim() ?? '',
+      ),
       message: content,
       time: _formatMessageTime(item['createdAt']?.toString() ?? ''),
       isUserMessage: senderId == currentUserId,
     );
+  }
+
+  String? _buildProfileImageUrl(String profileImageFileId) {
+    if (profileImageFileId.isEmpty) {
+      return null;
+    }
+    return _api.buildFileContentUrl(profileImageFileId);
   }
 
   String _formatMessageTime(String rawTimestamp) {
@@ -751,25 +938,16 @@ class ChatController extends GetxController {
     if (trimmed.isEmpty || isSending.value) return;
 
     isSending.value = true;
-    final now = DateTime.now();
-    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
-    final minute = now.minute.toString().padLeft(2, '0');
-    final period = now.hour >= 12 ? 'PM' : 'AM';
 
     try {
       await _api.sendTextMessage(conversationId, trimmed);
-      messages.add(
-        ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          senderName: 'You',
-          message: trimmed,
-          time: '$hour:$minute $period',
-          isUserMessage: true,
-        ),
-      );
       messageController.clear();
+      await loadMessages(showLoading: false, showErrors: false);
       if (Get.isRegistered<InboxController>()) {
-        await Get.find<InboxController>().loadConversations();
+        await Get.find<InboxController>().loadConversations(
+          showLoading: false,
+          showErrors: false,
+        );
       }
     } on ApiException catch (error) {
       Get.snackbar(
@@ -796,6 +974,8 @@ class ChatController extends GetxController {
 
   @override
   void onClose() {
+    _chatSocket.leaveConversation(conversationId);
+    _messageCreatedSubscription?.cancel();
     messageController.dispose();
     super.onClose();
   }
@@ -947,38 +1127,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Message Bubble ──────────────────────────────────────
   Widget _buildHeaderAvatar() {
-    final image = widget.contactImage.trim();
-    final imageHeaders = Get.find<AppApiService>().buildImageHeaders();
-    ImageProvider<Object>? imageProvider;
-    if (image.startsWith('http')) {
-      imageProvider = NetworkImage(image, headers: imageHeaders);
-    } else if (image.isNotEmpty) {
-      imageProvider = AssetImage(image);
-    }
-
-    final initials = widget.contactName.isNotEmpty
-        ? widget.contactName
-              .split(' ')
-              .where((part) => part.isNotEmpty)
-              .take(2)
-              .map((part) => part[0].toUpperCase())
-              .join()
-        : '?';
-
-    return CircleAvatar(
+    return _UserAvatar(
+      image: widget.contactImage,
+      name: widget.contactName,
       radius: 18.r,
-      backgroundImage: imageProvider,
-      backgroundColor: Colors.grey.shade200,
-      child: imageProvider == null
-          ? Text(
-              initials,
-              style: GoogleFonts.poppins(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-              ),
-            )
-          : null,
+      ringColor: widget.isOnline
+          ? AppColors.onlineDot.withValues(alpha: 0.22)
+          : const Color(0xFFE6ECF5),
+      background: const Color(0xFFF4F7FB),
+      textColor: AppColors.textDark,
+      fontSize: 12.sp,
     );
   }
 
@@ -992,15 +1150,14 @@ class _ChatScreenState extends State<ChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!msg.isUserMessage) ...[
-            CircleAvatar(
+            _UserAvatar(
+              image: msg.senderImage ?? '',
+              name: msg.senderName,
               radius: 16.r,
-              backgroundImage: msg.senderImage != null
-                  ? AssetImage(msg.senderImage!)
-                  : null,
-              backgroundColor: Colors.grey.shade300,
-              child: msg.senderImage == null
-                  ? Icon(Icons.person, size: 16.sp, color: Colors.grey)
-                  : null,
+              ringColor: const Color(0xFFE6ECF5),
+              background: const Color(0xFFF4F7FB),
+              textColor: AppColors.textDark,
+              fontSize: 11.sp,
             ),
             SizedBox(width: 8.w),
           ],

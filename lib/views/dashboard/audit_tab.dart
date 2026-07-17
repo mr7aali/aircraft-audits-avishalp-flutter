@@ -82,6 +82,90 @@ class _AuditTabState extends State<AuditTab> {
     _loadMoreFlights();
   }
 
+  DateTime? _parseStationWindowValue(String raw) {
+    final normalized = raw.trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    try {
+      return DateTime.parse(normalized);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatStationDate(String raw) {
+    final parsed = _parseStationWindowValue(raw);
+    if (parsed == null) {
+      return 'Date unavailable';
+    }
+
+    return DateFormat('EEE, MMM d, yyyy').format(parsed);
+  }
+
+  String _formatStationTime(String raw) {
+    final parsed = _parseStationWindowValue(raw);
+    if (parsed == null) {
+      return '';
+    }
+
+    return DateFormat('HH:mm').format(parsed);
+  }
+
+  Widget _buildFlightWindowSummary(AirportState state) {
+    return Obx(() {
+      final dateLabel = _formatStationDate(state.windowStart.value);
+      final startTime = _formatStationTime(state.windowStart.value);
+      final endTime = _formatStationTime(state.windowEnd.value);
+      final timezone = state.timezone.value.trim();
+      final hasTimeRange = startTime.isNotEmpty && endTime.isNotEmpty;
+      final hasTimezone = timezone.isNotEmpty;
+      final hasWindow = state.windowStart.value.trim().isNotEmpty;
+
+      if (!hasWindow && !hasTimezone) {
+        return const SizedBox.shrink();
+      }
+
+      return Container(
+        width: double.infinity,
+        margin: EdgeInsets.only(top: 14.h, bottom: 16.h),
+        padding: EdgeInsets.all(14.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18.r),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Wrap(
+          spacing: 10.w,
+          runSpacing: 10.h,
+          children: <Widget>[
+            _buildInfoPill(
+              icon: Icons.calendar_today_rounded,
+              label: dateLabel,
+              color: const Color(0xFF2563EB),
+              backgroundColor: const Color(0xFFEFF6FF),
+            ),
+            if (hasTimeRange)
+              _buildInfoPill(
+                icon: Icons.schedule_rounded,
+                label: '$startTime - $endTime',
+                color: const Color(0xFF0F766E),
+                backgroundColor: const Color(0xFFECFDF5),
+              ),
+            if (hasTimezone)
+              _buildInfoPill(
+                icon: Icons.public_rounded,
+                label: timezone,
+                color: const Color(0xFF7C3AED),
+                backgroundColor: const Color(0xFFF5F3FF),
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
   String _normalizeSearchValue(String value) {
     return value.trim().toLowerCase();
   }
@@ -680,13 +764,13 @@ class _AuditTabState extends State<AuditTab> {
           ],
         ),
         SizedBox(height: 14.h),
+        _buildFlightWindowSummary(state),
         Obx(() {
           if (state.status.value == 'error' && state.allFlights.isEmpty) {
             return _buildErrorPlaceholder(state.error.value ?? "Unknown error");
           }
           return const SizedBox.shrink();
         }),
-        SizedBox(height: 16.h),
         _buildSearchAndFilterBar(context, state),
         SizedBox(height: 16.h),
         _buildListContent(

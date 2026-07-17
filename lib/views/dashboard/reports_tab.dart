@@ -172,26 +172,13 @@ class _ReportsTabState extends State<ReportsTab> {
     setState(() => _isExporting = true);
 
     try {
-      final Map<String, dynamic> overview = await _api.getReportsOverview();
-      final ReportExportBundleDocument document =
-          ReportExportBundleDocument.fromOverview(
-            overview: overview,
-            bundleKey: meta.key,
-            fallbackTitle: meta.title,
-            fallbackSubtitle: meta.subtitle,
-            areaMeaning: meta.areaMeaning,
-            sectionMeaning: meta.sectionMeaning,
-            accentColorValue: meta.accent.toARGB32(),
-          );
-
-      if (!document.hasData) {
-        throw const ApiException(
-          'The selected report does not contain exportable data yet.',
-        );
-      }
-
-      final ReportExportResult result = await _reportExportService
-          .exportBundlePdf(document);
+      final ApiDownloadedFile download = await _api.downloadReportBundlePdf(
+        bundleKey: meta.key,
+      );
+      final ReportExportResult result = await _reportExportService.savePdf(
+        bytes: download.bytes,
+        fileName: download.fileName,
+      );
 
       if (!mounted) {
         return;

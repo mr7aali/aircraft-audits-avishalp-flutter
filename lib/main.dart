@@ -9,6 +9,7 @@ import 'package:get_storage/get_storage.dart';
 
 import 'config/app_env.dart';
 import 'services/app_api_service.dart';
+import 'services/chat_socket_service.dart';
 import 'services/session_service.dart';
 
 Future<void> main() async {
@@ -35,6 +36,10 @@ Future<void> main() async {
       Get.put<SessionService>(sessionService, permanent: true);
       Get.put<AppApiService>(
         AppApiService(sessionService: sessionService),
+        permanent: true,
+      );
+      Get.put<ChatSocketService>(
+        ChatSocketService(sessionService: sessionService),
         permanent: true,
       );
 

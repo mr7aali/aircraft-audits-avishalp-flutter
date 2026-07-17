@@ -13,6 +13,9 @@ class AirportState {
   final RxList<AviationFlight> departures = <AviationFlight>[].obs;
   final Rx<DateTime?> lastUpdated = Rx<DateTime?>(null);
   final Rx<String?> error = Rx<String?>(null);
+  final RxString timezone = ''.obs;
+  final RxString windowStart = ''.obs;
+  final RxString windowEnd = ''.obs;
 
   List<AviationFlight> get allFlights => [...arrivals, ...departures];
 
@@ -25,11 +28,17 @@ class AirportState {
     List<AviationFlight> arr,
     List<AviationFlight> dep, {
     DateTime? updatedAt,
+    String? timezoneLabel,
+    String? windowStartLabel,
+    String? windowEndLabel,
   }) {
     status.value = 'success';
     arrivals.assignAll(arr);
     departures.assignAll(dep);
     lastUpdated.value = updatedAt ?? DateTime.now();
+    timezone.value = (timezoneLabel ?? '').trim();
+    windowStart.value = (windowStartLabel ?? '').trim();
+    windowEnd.value = (windowEndLabel ?? '').trim();
   }
 
   void setError(String message) {
@@ -78,8 +87,11 @@ class AviationController extends GetxController {
       return;
     }
 
-    if (_session.availableContracts.isNotEmpty && _session.activeContract.isEmpty) {
-      activeAirport.setError('Select an airline contract to load inbound flights.');
+    if (_session.availableContracts.isNotEmpty &&
+        _session.activeContract.isEmpty) {
+      activeAirport.setError(
+        'Select an airline contract to load inbound flights.',
+      );
       return;
     }
 
@@ -93,6 +105,9 @@ class AviationController extends GetxController {
       final arrivals = _parseFlights(response['arrivals']);
       final departures = _parseFlights(response['departures']);
       final cache = response['cache'];
+      final timezone = response['timezone']?.toString().trim() ?? '';
+      final windowStart = response['windowStart']?.toString().trim() ?? '';
+      final windowEnd = response['windowEnd']?.toString().trim() ?? '';
 
       if (cache is Map<String, dynamic>) {
         final nextExpiryInSeconds =
@@ -111,11 +126,20 @@ class AviationController extends GetxController {
           arrivals,
           departures,
           updatedAt: _parseDateTime(cache['fetchedAt']),
+          timezoneLabel: timezone,
+          windowStartLabel: windowStart,
+          windowEndLabel: windowEnd,
         );
         return;
       }
 
-      activeAirport.setSuccess(arrivals, departures);
+      activeAirport.setSuccess(
+        arrivals,
+        departures,
+        timezoneLabel: timezone,
+        windowStartLabel: windowStart,
+        windowEndLabel: windowEnd,
+      );
       _cacheCountdownTimer?.cancel();
       secondsUntilCacheExpiry.value = 0;
     } on ApiException catch (error) {
