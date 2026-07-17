@@ -1,5 +1,6 @@
 import 'package:avislap/controllers/aviation_controller.dart';
 import 'package:avislap/models/aviationstack_model.dart';
+import 'package:avislap/services/app_api_service.dart';
 import 'package:avislap/services/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -43,6 +44,7 @@ class _HomeTabState extends State<HomeTab> {
               _HeroSection(
                 userName: session.fullName,
                 designation: session.activeRoleName,
+                profileImageFileId: session.profileImageFileId,
               ),
               const _DateSection(),
               SizedBox(height: 8.h),
@@ -68,11 +70,34 @@ class _HomeTabState extends State<HomeTab> {
 class _HeroSection extends StatelessWidget {
   final String userName;
   final String designation;
+  final String profileImageFileId;
 
-  const _HeroSection({required this.userName, required this.designation});
+  const _HeroSection({
+    required this.userName,
+    required this.designation,
+    required this.profileImageFileId,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final AppApiService api = Get.find<AppApiService>();
+    final String imageUrl = profileImageFileId.isEmpty
+        ? ''
+        : api.buildFileContentUrl(profileImageFileId);
+    final Map<String, String> imageHeaders = api.buildImageHeaders();
+    final String initials = userName.trim().isEmpty
+        ? 'U'
+        : userName
+              .trim()
+              .split(RegExp(r'\s+'))
+              .where((part) => part.isNotEmpty)
+              .take(2)
+              .map((part) => part[0].toUpperCase())
+              .join();
+    final ImageProvider<Object>? imageProvider = imageUrl.isEmpty
+        ? null
+        : NetworkImage(imageUrl, headers: imageHeaders);
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 40.h),
@@ -111,17 +136,37 @@ class _HeroSection extends StatelessWidget {
             Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(3),
+                  padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white30, width: 2),
+                    gradient: const LinearGradient(
+                      colors: <Color>[Color(0x66FFFFFF), Color(0x1FFFFFFF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(color: Colors.white30, width: 1.5),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: CircleAvatar(
                     radius: 36.r,
                     backgroundColor: Colors.white24,
-                    backgroundImage: const AssetImage(
-                      'assets/images/mursalin.jpg',
-                    ),
+                    backgroundImage: imageProvider,
+                    child: imageProvider == null
+                        ? Text(
+                            initials,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 24.sp,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          )
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -656,11 +701,11 @@ class _HomeFlightCard extends StatelessWidget {
             children: [
               _FlightMetaPill(
                 icon: Icons.meeting_room_outlined,
-                label: 'Terminal ${flight.arrivalTerminal}',
+                label: 'Terminal ${flight.displayArrivalTerminal}',
               ),
               _FlightMetaPill(
                 icon: Icons.place_outlined,
-                label: 'Gate ${flight.arrivalGate}',
+                label: 'Gate ${flight.displayArrivalGate}',
               ),
               _FlightMetaPill(
                 icon: Icons.confirmation_number_outlined,

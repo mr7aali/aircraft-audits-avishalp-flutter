@@ -243,19 +243,26 @@ class _FlightCardState extends State<FlightCard> {
   }
 
   Widget _buildFooter() {
+    final terminal = widget.flight.isDeparture
+        ? widget.flight.displayDepartureTerminal
+        : widget.flight.displayArrivalTerminal;
+    final gate = widget.flight.isDeparture
+        ? widget.flight.displayDepartureGate
+        : widget.flight.displayArrivalGate;
+
     return Row(
       children: [
         Expanded(
           child: _buildInfoGroup(
             label: "TERMINAL",
-            value: widget.flight.operationalTerminal,
+            value: terminal,
             color: AviationStackConfig.terminalColor,
           ),
         ),
         Expanded(
           child: _buildInfoGroup(
             label: "GATE",
-            value: widget.flight.operationalGate,
+            value: gate,
             color: AviationStackConfig.gateColor,
           ),
         ),
