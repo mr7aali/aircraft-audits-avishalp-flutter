@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:file_saver/file_saver.dart';
+import 'package:flutter/foundation.dart';
 
 class ReportExportService {
   Future<ReportExportResult> savePdf({
@@ -25,6 +24,13 @@ class ReportExportService {
       savedPath = null;
     }
 
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return ReportExportResult(
+        fileName: normalizedFileName,
+        savedPath: _validatedPath(savedPath),
+      );
+    }
+
     savedPath ??= await FileSaver.instance.saveFile(
       name: baseName,
       bytes: bytes,
@@ -32,16 +38,20 @@ class ReportExportService {
       mimeType: MimeType.pdf,
     );
 
-    final String trimmedPath = savedPath.trim();
+    return ReportExportResult(
+      fileName: normalizedFileName,
+      savedPath: _validatedPath(savedPath),
+    );
+  }
+
+  String _validatedPath(String? savedPath) {
+    final String trimmedPath = savedPath?.trim() ?? '';
     if (trimmedPath.isEmpty ||
         trimmedPath.toLowerCase().contains('something went wrong')) {
       throw Exception('Unable to save the generated PDF.');
     }
 
-    return ReportExportResult(
-      fileName: normalizedFileName,
-      savedPath: trimmedPath,
-    );
+    return trimmedPath;
   }
 
   String _normalizeFileName(String fileName) {
